@@ -42,3 +42,8 @@ clean:
 .PHONY: notebooks
 notebooks:
 	.venv/bin/python -m jupyter notebook --notebook-dir=notebooks
+
+# Download the dataset
+.PHONY: download
+download:
+	./scripts/download.sh
