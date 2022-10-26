@@ -47,3 +47,8 @@ notebooks:
 .PHONY: download
 download:
 	./scripts/download.sh
+
+# Enter an IPython REPL
+repl:
+	.venv/bin/ipython
+
