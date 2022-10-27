@@ -5,3 +5,5 @@ matplotlib
 pynwb
 pandas
 scikit-learn
+torch
+skorch
