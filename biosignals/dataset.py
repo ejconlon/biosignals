@@ -90,13 +90,9 @@ def read_part_dfs(part: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     chans = chans[['name']]
     chans['part'] = part
     chans['channel_id'] = chans.index
-    # print(chans)
     electrodes = read_tsv(part, 'space-ACPC_electrodes.tsv')
     electrodes = electrodes[['name', 'x', 'y', 'z']]
-    # print(electrodes)
-    # TODO join them
-    # per_chan = chans.join(electrodes, on='name', how='inner')
-    per_chan = chans
+    per_chan = chans.merge(electrodes, on='name', how='inner')
     assert len(per_chan) == len(chans)
     per_part = read_tsv(part, 'events.tsv')
     per_part['part'] = part
@@ -106,7 +102,7 @@ def read_part_dfs(part: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
 # Returns per-channel and per-part dataframes for the given set of participants
 def combined_dfs(parts: Set[str]) -> Tuple[pd.DataFrame, pd.DataFrame]:
     assert len(parts) > 0
-    pairs = [read_part_dfs(part) for part in parts]
-    combined_per_chan = pd.concat(p[0] for p in pairs)
-    combined_per_part = pd.concat(p[1] for p in pairs)
+    pairs = [read_part_dfs(part) for part in sorted(parts)]
+    combined_per_chan = pd.concat((p[0] for p in pairs), ignore_index=True)
+    combined_per_part = pd.concat((p[1] for p in pairs), ignore_index=True)
     return (combined_per_chan, combined_per_part)
