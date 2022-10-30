@@ -1,5 +1,5 @@
 import os.path
-from typing import Tuple
+from typing import Set, Tuple
 import pynwb
 import pandas as pd
 import numpy as np
@@ -10,6 +10,8 @@ import numpy as np
 
 EEG_SAMPLE_RATE = 1024
 AUDIO_SAMPLE_RATE = 48000
+EEG_LOW_CUTOFF_HZ = 0
+EEG_HIGH_CUTOFF_HZ = 512
 
 DATASET_FILE_FORMAT = 'datasets/SingleWordProductionDutch-iBIDS/sub-{part}/ieeg/sub-{part}_task-wordProduction_{fn}'
 
@@ -74,9 +76,37 @@ def read_ieeg_data(part: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 # I think the name for a given index corresponds to the channel at the given index
 # in the eeg array.
 # For events.tsv the whole thing is interesting
-# For space_space-ACPC_electrodes.tsv x y z are interesting for physical locations
+# For space-ACPC_electrodes.tsv x y z are interesting for physical locations
 # Match this to channel by looking at index of name in channels.tsv.
 # (Electrodes is a superset of channels? Maybe channels just contains only good data.)
 def read_tsv(part: str, fn: str) -> pd.DataFrame:
     full_fn = DATASET_FILE_FORMAT.format(part=part, fn=fn)
     return pd.read_csv(full_fn, delimiter='\t')
+
+
+# Returns per-channel and per-part dataframes, each labeled with part column
+def read_part_dfs(part: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    chans = read_tsv(part, 'channels.tsv')
+    chans = chans[['name']]
+    chans['part'] = part
+    chans['channel_id'] = chans.index
+    # print(chans)
+    electrodes = read_tsv(part, 'space-ACPC_electrodes.tsv')
+    electrodes = electrodes[['name', 'x', 'y', 'z']]
+    # print(electrodes)
+    # TODO join them
+    # per_chan = chans.join(electrodes, on='name', how='inner')
+    per_chan = chans
+    assert len(per_chan) == len(chans)
+    per_part = read_tsv(part, 'events.tsv')
+    per_part['part'] = part
+    return (per_chan, per_part)
+
+
+# Returns per-channel and per-part dataframes for the given set of participants
+def combined_dfs(parts: Set[str]) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    assert len(parts) > 0
+    pairs = [read_part_dfs(part) for part in parts]
+    combined_per_chan = pd.concat(p[0] for p in pairs)
+    combined_per_part = pd.concat(p[1] for p in pairs)
+    return (combined_per_chan, combined_per_part)
