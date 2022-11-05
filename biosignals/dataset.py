@@ -1,5 +1,5 @@
 import os
-from typing import Set, Tuple
+from typing import List, Set, Tuple
 import pynwb
 import pandas as pd
 import numpy as np
@@ -156,3 +156,43 @@ def write_all_aiff(dirname: str):
     os.mkdir(dirname)
     for part in PARTICIPANTS:
         write_part_aiff(part, dirname)
+
+
+# Read marks from the audio file and return onsets (at the eeg sample rate, like stim)
+# This code is horrible because every audio editor handles marks horribly.
+# Sometimes they're duplicated, sometimes they're cycled, ugh.
+def read_part_onsets(part: str, dirname: str, name: str) -> np.ndarray:
+    assert os.path.isdir(dirname)
+    fn = f'{dirname}/part_{part}_{name}.aiff'
+    with aifc.open(fn, 'r') as f:
+        marks = f.getmarkers()
+    assert marks is not None
+    onsets: List[int] = []
+    window = 0
+    seeking = 's'
+    last_num = -1
+    last_val = 'xxx'.encode()
+    for mark in marks:
+        (num, asamp, mark_val) = mark
+        if mark_val == last_val:
+            continue
+        elif num < last_num:
+            break
+        expected_val = f'{seeking}{window}'.encode()
+        assert mark_val == expected_val
+        if seeking == 's':
+            seeking = 'o'
+        elif seeking == 'o':
+            esamp = int(float(asamp) / AUDIO_SAMPLE_RATE * EEG_SAMPLE_RATE)
+            onsets.append(esamp)
+            seeking = 'e'
+        elif seeking == 'e':
+            window += 1
+            seeking = 's'
+        else:
+            assert False, 'invalid'
+        last_num = num
+        last_val = mark_val
+    # Check outside of this function that this matches the number of stimuli / 2
+    # assert len(onsets) == 100
+    return np.array(onsets)
