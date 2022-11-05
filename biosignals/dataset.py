@@ -129,6 +129,7 @@ def write_part_aiff(part: str, dirname: str):
         f.aiff()
         f.setparams(params)
         f.writeframes(data)
+        next_id = 1
         for num, esamp in enumerate(stim_ixs):
             asamp = int(float(esamp) / EEG_SAMPLE_RATE * AUDIO_SAMPLE_RATE)
             val = stim[esamp]
@@ -136,7 +137,17 @@ def write_part_aiff(part: str, dirname: str):
             # The marks are either s{num} for start or e{num} for end
             # The onset marks should be o{num} for onset
             mark_val = f's{num // 2}' if is_prompt else f'e{num // 2}'
-            f.setmark(num + 1, asamp, mark_val.encode())
+            f.setmark(next_id, asamp, mark_val.encode())
+            next_id += 1
+            # Write onset mark if this is the start of a window
+            if is_prompt:
+                # This is very dumb - just put a mark 25% of the way into a window
+                # Replace this with onset detection?
+                next_asamp = int(float(stim_ixs[num + 1])) / EEG_SAMPLE_RATE * AUDIO_SAMPLE_RATE
+                onset_asamp = int(asamp + 0.25 * (next_asamp - asamp))
+                onset_mark_val = f'o{num // 2}'
+                f.setmark(next_id, onset_asamp, onset_mark_val.encode())
+                next_id += 1
 
 
 # Write audio from all parts to the given directory
