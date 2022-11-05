@@ -1,8 +1,9 @@
-import os.path
+import os
 from typing import Set, Tuple
 import pynwb
 import pandas as pd
 import numpy as np
+import soundfile
 
 # See https://www.nature.com/articles/s41597-022-01542-9#Sec7 for dataset details.
 # Also see the dataset authors' code for processing it:
@@ -106,3 +107,19 @@ def combined_dfs(parts: Set[str]) -> Tuple[pd.DataFrame, pd.DataFrame]:
     combined_per_chan = pd.concat((p[0] for p in pairs), ignore_index=True)
     combined_per_part = pd.concat((p[1] for p in pairs), ignore_index=True)
     return (combined_per_chan, combined_per_part)
+
+
+# Write audio from the given part to a file
+def write_part_aiff(part: str, fn: str):
+    assert not os.path.exists(fn)
+    (_, _, audio) = read_ieeg_data(part)
+    soundfile.write(fn, audio, AUDIO_SAMPLE_RATE, format='aiff')
+
+
+# Write audio from all parts to the given directory
+def write_all_aiff(dirname: str):
+    assert not os.path.exists(dirname)
+    os.mkdir(dirname)
+    for part in PARTICIPANTS:
+        fn = f'{dirname}/part_{part}.aiff'
+        write_part_aiff(part, fn)
