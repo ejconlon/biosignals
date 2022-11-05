@@ -1,5 +1,5 @@
 import os
-from typing import List, Set, Tuple
+from typing import Dict, List, Set, Tuple
 import pynwb
 import pandas as pd
 import numpy as np
@@ -71,6 +71,15 @@ def read_ieeg_data(part: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         audio_seconds = float(audio_samples) / AUDIO_SAMPLE_RATE
         assert np.isclose(eeg_seconds, audio_seconds, atol=0.005)
         return (eeg, stimulus, audio)
+
+
+# Read a (eeg, stimulus, audio) for all participants
+def real_all_ieeg_data() -> Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    all_data: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+    for part in PARTICIPANTS:
+        tup = read_ieeg_data(part)
+        all_data[part] = tup
+    return all_data
 
 
 # Read TSV data for a given participant and category
@@ -159,6 +168,7 @@ def write_all_aiff(dirname: str):
 
 
 # Read marks from the audio file and return onsets (at the eeg sample rate, like stim)
+# The 'name' parameter is the variant of the aiff file (like "marked") to read.
 # This code is horrible because every audio editor handles marks horribly.
 # Sometimes they're duplicated, sometimes they're cycled, ugh.
 def read_part_onsets(part: str, dirname: str, name: str) -> np.ndarray:
@@ -196,3 +206,14 @@ def read_part_onsets(part: str, dirname: str, name: str) -> np.ndarray:
     # Check outside of this function that this matches the number of stimuli / 2
     # assert len(onsets) == 100
     return np.array(onsets)
+
+
+# Read all onsets from aiff files in a given directory.
+# The 'name' parameter is the variant of the aiff file (like "marked") to read.
+def read_all_onsets(dirname: str, name: str) -> Dict[str, np.ndarray]:
+    assert os.path.isdir(dirname)
+    all_onsets: Dict[str, np.ndarray] = {}
+    for part in PARTICIPANTS:
+        onsets = read_part_onsets(part, dirname, name)
+        all_onsets[part] = onsets
+    return all_onsets
