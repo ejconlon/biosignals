@@ -67,7 +67,7 @@ def read_ieeg_data(part: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         audio_samples = audio.shape[0]
         eeg_seconds = float(eeg_samples) / EEG_SAMPLE_RATE
         audio_seconds = float(audio_samples) / AUDIO_SAMPLE_RATE
-        assert np.isclose(eeg_seconds, audio_seconds)
+        assert np.isclose(eeg_seconds, audio_seconds, atol=0.005)
         return (eeg, stimulus, audio)
 
 
