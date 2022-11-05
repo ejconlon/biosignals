@@ -4,6 +4,7 @@ import pynwb
 import pandas as pd
 import numpy as np
 import soundfile
+import aifc
 
 # See https://www.nature.com/articles/s41597-022-01542-9#Sec7 for dataset details.
 # Also see the dataset authors' code for processing it:
@@ -109,11 +110,33 @@ def combined_dfs(parts: Set[str]) -> Tuple[pd.DataFrame, pd.DataFrame]:
     return (combined_per_chan, combined_per_part)
 
 
-# Write audio from the given part to a file
-def write_part_aiff(part: str, fn: str):
-    assert not os.path.exists(fn)
-    (_, _, audio) = read_ieeg_data(part)
-    soundfile.write(fn, audio, AUDIO_SAMPLE_RATE, format='aiff')
+# Write audio from the given part to files in the directory
+# Writes marked and unmarked versions
+def write_part_aiff(part: str, dirname: str):
+    assert os.path.isdir(dirname)
+    unmarked_fn = f'{dirname}/part_{part}_unmarked.aiff'
+    marked_fn = f'{dirname}/part_{part}_marked.aiff'
+    assert not os.path.exists(unmarked_fn)
+    assert not os.path.exists(marked_fn)
+    (_, stim, audio) = read_ieeg_data(part)
+    stim_ixs = [ix for ix in np.where(np.roll(stim, 1) != stim)[0]]
+    soundfile.write(unmarked_fn, audio, AUDIO_SAMPLE_RATE, format='aiff')
+    with aifc.open(unmarked_fn, 'r') as f:
+        params = f.getparams()
+        nframes = f.getnframes()
+        data = f.readframes(nframes)
+    with aifc.open(marked_fn, 'w') as f:
+        f.aiff()
+        f.setparams(params)
+        f.writeframes(data)
+        for num, esamp in enumerate(stim_ixs):
+            asamp = int(float(esamp) / EEG_SAMPLE_RATE * AUDIO_SAMPLE_RATE)
+            val = stim[esamp]
+            is_prompt = len(val) > 0
+            # The marks are either s{num} for start or e{num} for end
+            # The onset marks should be o{num} for onset
+            mark_val = f's{num // 2}' if is_prompt else f'e{num // 2}'
+            f.setmark(num + 1, asamp, mark_val.encode())
 
 
 # Write audio from all parts to the given directory
@@ -121,5 +144,4 @@ def write_all_aiff(dirname: str):
     assert not os.path.exists(dirname)
     os.mkdir(dirname)
     for part in PARTICIPANTS:
-        fn = f'{dirname}/part_{part}.aiff'
-        write_part_aiff(part, fn)
+        write_part_aiff(part, dirname)
