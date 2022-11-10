@@ -6,6 +6,8 @@ import numpy as np
 import soundfile
 import aifc
 
+import librosa
+
 # See https://www.nature.com/articles/s41597-022-01542-9#Sec7 for dataset details.
 # Also see the dataset authors' code for processing it:
 # https://github.com/neuralinterfacinglab/SingleWordProductionDutch
@@ -134,6 +136,7 @@ def write_part_aiff(part: str, dirname: str):
         params = f.getparams()
         nframes = f.getnframes()
         data = f.readframes(nframes)
+    # problematic_markers = []
     with aifc.open(marked_fn, 'w') as f:
         f.aiff()
         f.setparams(params)
@@ -150,10 +153,52 @@ def write_part_aiff(part: str, dirname: str):
             next_id += 1
             # Write onset mark if this is the start of a window
             if is_prompt:
-                # This is very dumb - just put a mark 25% of the way into a window
-                # Replace this with onset detection?
+
                 next_asamp = int(float(stim_ixs[num + 1])) / EEG_SAMPLE_RATE * AUDIO_SAMPLE_RATE
-                onset_asamp = int(asamp + 0.25 * (next_asamp - asamp))
+                onset_asamp = 0
+                curr_audio = audio[int(asamp):int(next_asamp)]
+
+                audio_rms = librosa.feature.rms(y=curr_audio)[0]
+                audio_times = librosa.frames_to_time(np.arange(len(audio_rms)), sr=AUDIO_SAMPLE_RATE)
+
+                r_normalized = (audio_rms - 0.02) / np.std(audio_rms)
+                p = np.exp(r_normalized) / (1 + np.exp(r_normalized))
+
+                transition = librosa.sequence.transition_loop(2, [0.5, 0.6])
+                full_p = np.vstack([1 - p, p])
+
+                states = librosa.sequence.viterbi_discriminative(full_p, transition).astype(np.int8)
+
+                # Add padding before the detected speech envelope and pass each envelope thru onset detection function
+                state_changes = states - np.roll(states, 1)
+                # 1 indicates the start of a detected envelope and -1 indicates the end
+
+                # Case: no state changes detected -> need to manually set markers
+                if np.count_nonzero(state_changes) == 0:
+                    # This is very dumb - just put a mark 25% of the way into a window
+                    onset_asamp = int(asamp + 0.25 * (next_asamp - asamp))
+                    # problematic_markers.append(num)
+                # Case: at least 1 state change detected
+                # -----> get start and end of state changes (set as envelope) and do onset detection
+                else:
+                    # Discard all starts and stops in the middle (assume 1 envelope per word)
+                    env_start = np.argwhere(state_changes == 1)[0]
+                    env_end = np.argwhere(state_changes == -1)[-1]
+
+                    # Case: no end -> set env_end to the last index
+                    if env_end < env_start:
+                        env_end = len(state_changes) - 1
+
+                    padding = 4800  # number of samples to pad in front of detected envelope (=0.1s)
+
+                    # Start and end audio sample numbers
+                    curr_audio_start = int(audio_times[env_start] * AUDIO_SAMPLE_RATE)
+                    if curr_audio_start >= padding:
+                        curr_audio_start -= padding
+                    curr_audio_end = int(audio_times[env_end] * AUDIO_SAMPLE_RATE)
+                    onset_asamp = librosa.onset.onset_detect(y=audio[curr_audio_start:curr_audio_end],
+                                                             sr=AUDIO_SAMPLE_RATE,
+                                                             units='samples')[0] + curr_audio_start + asamp
                 onset_mark_val = f'o{num // 2}'
                 f.setmark(next_id, onset_asamp, onset_mark_val.encode())
                 next_id += 1

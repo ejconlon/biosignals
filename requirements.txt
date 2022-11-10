@@ -8,3 +8,4 @@ scikit-learn
 torch
 skorch
 soundfile
+librosa
