@@ -9,3 +9,5 @@ torch
 skorch
 soundfile
 librosa
+keras
+tensorflow
