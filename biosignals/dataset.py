@@ -38,8 +38,9 @@ def easy_cluster_channels(n_clusters=32) -> pd.DataFrame:
 
 
 # Cluster channels to find closest to each cluster centroid
-def cluster_channels(combined_part_df: pd.DataFrame, n_clusters=32) -> pd.DataFrame:
-    x = combined_part_df
+# Takes as input the combined per_chan dataframe (from combined_dfs)
+def cluster_channels(combined_chan_df: pd.DataFrame, n_clusters=32) -> pd.DataFrame:
+    x = combined_chan_df
     parts = sorted(set(x.part))
     k = BisectingKMeans(n_clusters=n_clusters).fit(x[['x', 'y', 'z']])
     out_map = {}
