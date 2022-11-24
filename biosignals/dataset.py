@@ -5,8 +5,8 @@ import pandas as pd
 import numpy as np
 import soundfile
 import aifc
-
 import librosa
+from sklearn.cluster import BisectingKMeans
 
 # See https://www.nature.com/articles/s41597-022-01542-9#Sec7 for dataset details.
 # Also see the dataset authors' code for processing it:
@@ -29,6 +29,58 @@ FILES = [
     'space-ACPC_coordsystem.json',
     'space-ACPC_electrodes.tsv'
 ]
+
+
+# NOTE(ejconlon) This is just here to quickly observe clustering in the repl
+def easy_cluster_channels(n_clusters=32) -> pd.DataFrame:
+    x, _ = combined_dfs(set(PARTICIPANTS))
+    return cluster_channels(x, n_clusters=n_clusters)
+
+
+# Cluster channels to find closest to each cluster centroid
+def cluster_channels(combined_part_df: pd.DataFrame, n_clusters=32) -> pd.DataFrame:
+    x = combined_part_df
+    parts = sorted(set(x.part))
+    k = BisectingKMeans(n_clusters=n_clusters).fit(x[['x', 'y', 'z']])
+    out_map = {}
+    for part in parts:
+        y = x[x.part == part]
+        v = k.transform(y[['x', 'y', 'z']])
+        closest_ranked = np.argsort(v.transpose())
+        assert closest_ranked.shape == (n_clusters, len(y))
+        for cluster_id in range(n_clusters):
+            found = False
+            for channel_id in closest_ranked[cluster_id]:
+                pair = (part, channel_id)
+                if pair in out_map:
+                    pass
+                else:
+                    out_map[pair] = cluster_id
+                    found = True
+                    break
+            assert found
+    # Filter to unique closest and assign cluster_id
+    x_filter = pd.MultiIndex.from_frame(x[['part', 'channel_id']])
+    z = x[x_filter.isin(out_map)].copy(deep=True)
+    cluster_ids = []
+    ixs = []
+    for row_pair in z.iterrows():
+        ix, row = row_pair
+        ixs.append(ix)
+        pair = (row['part'], row['channel_id'])  # type: ignore
+        cluster_id = out_map[pair]
+        cluster_ids.append(cluster_id)
+    z.insert(0, 'cluster_id', pd.Series(cluster_ids, index=ixs, dtype=np.uint))
+    # Sanity checks
+    # Assert there is a cluster entry for each participant
+    for cluster_id in range(n_clusters):
+        y = z[z.cluster_id == cluster_id]
+        assert len(y) == len(parts)
+    # Assert that each participant has n_clusters entries
+    for part in parts:
+        y = z[z.part == part]
+        assert len(y) == n_clusters
+    return z
 
 
 # Sanity check that everything is present in the dataset
