@@ -7,6 +7,7 @@ import soundfile
 import aifc
 import librosa
 from sklearn.cluster import BisectingKMeans
+from dataclasses import dataclass
 
 # See https://www.nature.com/articles/s41597-022-01542-9#Sec7 for dataset details.
 # Also see the dataset authors' code for processing it:
@@ -315,3 +316,27 @@ def read_all_onsets(dirname: str, name: str) -> Dict[str, np.ndarray]:
         onsets = read_part_onsets(part, dirname, name)
         all_onsets[part] = onsets
     return all_onsets
+
+
+# Read onsets from what we've manually marked
+def read_manual_onsets() -> Dict[str, np.ndarray]:
+    return read_all_onsets('annotated_markers', 'marked')
+
+
+# A pair of onsets and eeg data
+# Later we can extract windows from this data as we see fit
+@dataclass(frozen=True)
+class MarkedData:
+    onsets: List[int]
+    eeg: np.ndarray
+
+
+# Read marked data for all participants
+def read_marked_data() -> Dict[str, MarkedData]:
+    part_onsets = read_manual_onsets()
+    part_arrays = read_all_ieeg_data()
+    out = {}
+    for part, onsets in part_onsets.items():
+        arrays = part_arrays[part]
+        out[part] = MarkedData(list(onsets), arrays[0])
+    return out
