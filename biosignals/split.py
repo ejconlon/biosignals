@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, List
+from typing import Any, Dict, List, Set
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
@@ -100,17 +100,20 @@ def negative_windows(
 ) -> np.ndarray:
     rand_onsets: List[int] = []
     num_samps = marked.eeg.shape[1]
-    while len(rand_onsets) < len(marked.onsets):
+    valid_onsets = 0
+    for o in marked.onsets:
+        start = conf.start(o)
+        end = conf.end(o)
+        if start >= 0 and end < marked.eeg.shape[1]:
+            valid_onsets += 1
+    while len(rand_onsets) < valid_onsets:
         target = conf.random_onset(num_samps, rand)
         if not conf.is_near_positive(target, marked.onsets):
             rand_onsets.append(target)
     windows = []
     for o in rand_onsets:
         windows.append(marked.eeg[:, conf.start(o):conf.end(o)])
-    out = np.array(windows, dtype=marked.eeg.dtype)
-    shape = (len(marked.onsets), marked.eeg.shape[1], conf.total_len())
-    assert out.shape == shape
-    return out
+    return np.array(windows, dtype=marked.eeg.dtype)
 
 
 # Project a windowed array into a dataframe
@@ -143,17 +146,33 @@ class Role(Enum):
 
 
 class Splitter:
+    def __init__(self):
+        self._last_window_id = 0
+
     # Inputs:
     # role: train/validate/test
+    # conf: window config
     # rand: optional random src
     # Output:
     # df with 'part', 'window_id', 'label', 'channel_id', ...
-    def split(
-        self,
-        role: Role,
-        conf: WindowConfig,
-        rand: Random
-    ) -> pd.DataFrame:
+    def split(self, role: Role, conf: WindowConfig, rand: Random) -> pd.DataFrame:
+        pos_dfs = self._select(role, conf, rand, positive_windows, True)
+        neg_dfs = self._select(role, conf, rand, negative_windows, False)
+        assert len(pos_dfs) == len(neg_dfs)
+        return pd.concat((pos_dfs, neg_dfs), ignore_index=True)
+
+    def _concat(self, dfs: List[pd.DataFrame]) -> pd.DataFrame:
+        assert len(dfs) > 0
+        mod_dfs = []
+        for df in dfs:
+            max_index = df['window_index'].max()
+            df['window_id'] = pd.Series(df['window_index'] + self._last_window_id, dtype=np.uint)
+            self._last_window_id += max_index + 1
+            del df['window_index']
+            mod_dfs.append(df)
+        return pd.concat(mod_dfs, ignore_index=True)
+
+    def _select(self, role: Role, conf: WindowConfig, rand: Random, windows: Any, label: bool) -> pd.DataFrame:
         raise NotImplementedError()
 
 
@@ -167,26 +186,15 @@ def generate_perm(rand: Random) -> List[int]:
 
 
 # Splits data randomly by role according to the percentage breakdown and permutation
-class RandomSplitter:
+class RandomSplitter(Splitter):
     def __init__(self, marked: Dict[str, MarkedData], pct: Dict[Role, int], perm: List[int]):
+        super().__init__()
         self._marked = marked
         self._pct = pct
         total_pct = sum(pct.values())
         assert total_pct == 100
-        self._last_window_id = 0
         self._perm = perm
         assert sorted(perm) == list(range(100))
-
-    def _concat(self, dfs: List[pd.DataFrame]) -> pd.DataFrame:
-        assert len(dfs) > 0
-        mod_dfs = []
-        for df in dfs:
-            max_index = df['window_index'].max()
-            df['window_id'] = pd.Series(df['window_index'] + self._last_window_id, dtype=np.uint)
-            self._last_window_id += max_index + 1
-            del df['window_index']
-            mod_dfs.append(df)
-        return pd.concat(mod_dfs, ignore_index=True)
 
     def _min_pct(self, role: Role) -> int:
         if role == Role.TRAIN:
@@ -204,25 +212,32 @@ class RandomSplitter:
         else:
             return 100
 
-    def split(
-        self,
-        role: Role,
-        conf: WindowConfig,
-        rand: Random
-    ) -> pd.DataFrame:
-        pos_dfs = [project_df(k, positive_windows(v, conf, rand)) for (k, v) in self._marked.items()]
-        all_pos_dfs = self._concat(pos_dfs)
-        all_pos_dfs['label'] = True
-        neg_dfs = [project_df(k, positive_windows(v, conf, rand)) for (k, v) in self._marked.items()]
-        all_neg_dfs = self._concat(neg_dfs)
-        all_neg_dfs['label'] = False
-        assert len(all_pos_dfs) == len(all_neg_dfs)
+    def _select(self, role: Role, conf: WindowConfig, rand: Random, windows: Any, label: bool) -> pd.DataFrame:
+        dfs = [project_df(k, windows(v, conf, rand)) for (k, v) in self._marked.items()]
+        all_dfs = self._concat(dfs)
+        all_dfs['label'] = label
         min_pct = self._min_pct(role)
         max_pct = self._max_pct(role)
         ixs = [
-            i for i in range(len(all_pos_dfs))
+            i for i in range(len(all_dfs))
             if self._perm[i % 100] >= min_pct and self._perm[i % 100] < max_pct
         ]
-        sel_pos_dfs = all_pos_dfs.iloc[ixs]
-        sel_neg_dfs = all_neg_dfs.iloc[ixs]
-        return pd.concat((sel_pos_dfs, sel_neg_dfs), ignore_index=True)
+        return all_dfs.iloc[ixs]
+
+
+# Splits by participant
+class PartSplitter(Splitter):
+    def __init__(self, marked: Dict[str, MarkedData], role_parts: Dict[Role, Set[str]]):
+        super().__init__()
+        self._marked = marked
+        self._role_parts = role_parts
+
+    def _select(self, role: Role, conf: WindowConfig, rand: Random, windows: Any, label: bool) -> pd.DataFrame:
+        parts = self._role_parts[role]
+        dfs = [
+            project_df(k, windows(v, conf, rand))
+            for (k, v) in self._marked.items() if k in parts
+        ]
+        all_dfs = self._concat(dfs)
+        all_dfs['label'] = label
+        return all_dfs

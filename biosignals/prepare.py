@@ -28,22 +28,27 @@ def prepare():
     # Generate permutation
     perm = bs.generate_perm(rand)
     # Define splits
-    splitter = bs.RandomSplitter(
+    rand_splitter = bs.RandomSplitter(
         marked, {bs.Role.TRAIN: 80, bs.Role.VALIDATE: 10, bs.Role.TEST: 10}, perm)
     # Split the data
     print('Splitting data')
     # TODO Split train and validate sets too
     # train_df = splitter.split(bs.Role.TRAIN, conf=conf, rand=rand)
     # validate_df = splitter.split(bs.Role.VALIDATE, conf=conf, rand=rand)
-    test_df = splitter.split(bs.Role.TEST, conf=conf, rand=rand)
+    rand_test_df = rand_splitter.split(bs.Role.TEST, conf=conf, rand=rand)
     # Print just to take a look
     # print(train_df)
     # print(validate_df)
-    print(test_df)
+    print(rand_test_df)
+
+    # Variant with per-participant splits - just an example
+    part_splitter = bs.PartSplitter(marked, {bs.Role.TEST: set(['01', '02'])})
+    part_test_df = part_splitter.split(bs.Role.TEST, conf=conf, rand=rand)
+    print(part_test_df)
 
     # Features - TODO add more features
     extractors = bf.default_extractors()
-    test_feat_df = bf.extract_features(test_df, extractors)
+    test_feat_df = bf.extract_features(rand_test_df, extractors)
     print(test_feat_df)
 
     # TODO Write prepared data to dist
