@@ -13,9 +13,9 @@ from biosignals.dataset import EEG_SAMPLE_RATE
 class Extractor:
     # Inputs:
     # df: Dataframe with columns 'window_id', 'channel_id', 'eeg', etc
-    # Output:
-    # The same input dataframe with feature columns added
-    def extract(self, df: pd.DataFrame) -> pd.DataFrame:
+    # Side effects:
+    # Mutates the given dataframe to add columns
+    def extract(self, df: pd.DataFrame):
         raise NotImplementedError()
 
 
@@ -25,13 +25,13 @@ class ArrayExtractor(Extractor):
         self._fn = fn
         self._dtype = dtype
 
-    def extract(self, df: pd.DataFrame) -> pd.DataFrame:
+    def extract(self, df: pd.DataFrame):
         values = []
         for _, row in df.iterrows():
             value = self._fn(row['eeg'])
             values.append(value)
         series = pd.Series(values, dtype=self._dtype)
-        return df.assign(**{self._name: series})
+        df.insert(0, self._name, series)
 
 
 # Compute the average power in the frequency band
@@ -70,9 +70,8 @@ def default_extractors() -> List[Extractor]:
 # Inputs:
 # df: dataframe with window_id, channel_id, eeg
 # extractors: list of features extractors
-# Output:
-# dataframe with window_id, channel_id, and feature columns
-def extract_features(df: pd.DataFrame, extractors: List[Extractor]) -> pd.DataFrame:
+# Side effect:
+# Adds feature columns to the input dataframe
+def extract_features(df: pd.DataFrame, extractors: List[Extractor]):
     for ex in extractors:
-        df = ex.extract(df)
-    return df
+        ex.extract(df)

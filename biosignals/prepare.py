@@ -61,10 +61,13 @@ def prepare_splits(
     print('Preparing splits')
     for r, c in spec.items():
         for i in range(c):
-            print(f'Preparing split {r.pretty_name()} {i}')
-            init_df = splitter.split(marked, r, conf=conf, rand=rand)
-            feat_df = bf.extract_features(init_df, extractors)
-            final_df = bd.add_cluster_info(cluster_df, feat_df)
+            print(f'Splitting {r.pretty_name()} {i}')
+            data_df = splitter.split(marked, r, conf=conf, rand=rand)
+            print('... adding features')
+            bf.extract_features(data_df, extractors)
+            print('... adding cluster info')
+            final_df = bd.add_cluster_info(data_df, cluster_df)
+            print('... writing to disk')
             dest_path = os.path.join(dest_dir, f'{r.pretty_name()}_{i}.pickle')
             final_df.to_pickle(dest_path)
 
@@ -76,7 +79,7 @@ def prepare_example():
     conf = bs.DEFAULT_WINDOW_CONFIG
     perm = bs.generate_perm(rand)
     splitter = bs.RandomSplitter(
-        perm, {bs.Role.TRAIN: 80, bs.Role.VALIDATE: 10, bs.Role.TEST: 10})
+        perm, {bs.Role.TRAIN: 98, bs.Role.VALIDATE: 1, bs.Role.TEST: 1})
     extractors = bf.default_extractors()
 
     prepare_splits(
@@ -88,7 +91,7 @@ def prepare_example():
         spec={bs.Role.TEST: 1}
     )
 
-    # Check that we can read what we write
+    print('Testing example read')
     prep_read = read_prepared('example')
     assert len(prep_read) == 3
     assert len(prep_read[bs.Role.TRAIN]) == 0
@@ -96,6 +99,29 @@ def prepare_example():
     assert len(prep_read[bs.Role.TEST]) == 1
     check_df = prep_read[bs.Role.TEST][0].load()
     assert len(check_df) > 0
+
+
+# Prepare a randomly-split set
+def prepare_rand():
+    rand = Random(42)
+    conf = bs.DEFAULT_WINDOW_CONFIG
+    perm = bs.generate_perm(rand)
+    splitter = bs.RandomSplitter(
+        perm, {bs.Role.TRAIN: 80, bs.Role.VALIDATE: 10, bs.Role.TEST: 10})
+    extractors = bf.default_extractors()
+
+    prepare_splits(
+        name='rand',
+        conf=conf,
+        rand=rand,
+        splitter=splitter,
+        extractors=extractors,
+        spec={
+            bs.Role.TRAIN: 1,
+            bs.Role.VALIDATE: 1,
+            bs.Role.TEST: 1
+        }
+    )
 
 
 # A simple proxy to lazy-load dataframes

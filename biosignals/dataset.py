@@ -89,15 +89,13 @@ def cluster_channels(combined_chan_df: pd.DataFrame, n_clusters=32) -> pd.DataFr
 
 # Add cluster information to the data dataframe (typically features)
 # Inputs:
-# cluster_df: dataframe with 'cluster_id', 'channel_id', 'part', 'x', 'y', 'z'
 # data_df: dataframe with 'channel_id', 'part', feature columns
-# Output:
-# dataframe with same columns as data_df plus 'cluster_id', 'x', 'y', 'z'
-def add_cluster_info(cluster_df: pd.DataFrame, data_df: pd.DataFrame) -> pd.DataFrame:
+# cluster_df: dataframe with 'cluster_id', 'channel_id', 'part', 'x', 'y', 'z'
+# Side effect:
+# Returns data_df with columns 'cluster_id', 'x', 'y', 'z' added
+def add_cluster_info(data_df: pd.DataFrame, cluster_df: pd.DataFrame) -> pd.DataFrame:
     right_df = cluster_df[['part', 'channel_id', 'cluster_id', 'x', 'y', 'z']]
-    out_df = pd.merge(data_df, right_df, on=('part', 'channel_id'), how='inner')
-    assert len(out_df) == len(data_df)
-    return out_df
+    return pd.merge(data_df, right_df, on=('part', 'channel_id'), how='left', copy=False)
 
 
 # Sanity check that everything is present in the dataset
