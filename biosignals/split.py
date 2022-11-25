@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
@@ -65,16 +65,14 @@ DEFAULT_WINDOW_CONFIG = WindowConfig(
 # numpy array with shape (num_windows, num_channels, num_window_samples)
 def positive_windows(
     marked: MarkedData,
-    conf: WindowConfig = DEFAULT_WINDOW_CONFIG,
-    rand: Optional[Random] = None
+    conf: WindowConfig,
+    rand: Random
 ) -> np.ndarray:
     assert conf.max_jitter >= 0
     rand_onsets: List[int]
     if conf.max_jitter == 0:
         rand_onsets = marked.onsets
     else:
-        if rand is None:
-            rand = Random()
         rand_onsets = [rand.randint(o - conf.max_jitter, o + conf.max_jitter) for o in marked.onsets]
     windows = []
     for o in rand_onsets:
@@ -97,11 +95,9 @@ def positive_windows(
 # numpy array with shape (num_windows, num_channels, num_window_samples)
 def negative_windows(
     marked: MarkedData,
-    conf: WindowConfig = DEFAULT_WINDOW_CONFIG,
-    rand: Optional[Random] = None
+    conf: WindowConfig,
+    rand: Random
 ) -> np.ndarray:
-    if rand is None:
-        rand = Random()
     rand_onsets: List[int] = []
     num_samps = marked.eeg.shape[1]
     while len(rand_onsets) < len(marked.onsets):
@@ -155,14 +151,14 @@ class Splitter:
     def split(
         self,
         role: Role,
-        conf: WindowConfig = DEFAULT_WINDOW_CONFIG,
-        rand: Optional[Random] = None
+        conf: WindowConfig,
+        rand: Random
     ) -> pd.DataFrame:
         raise NotImplementedError()
 
 
 # Generate a random permutation of range(100) to select fairly
-def generate_perm(rand: Optional[Random] = None) -> List[int]:
+def generate_perm(rand: Random) -> List[int]:
     if rand is None:
         rand = Random()
     xs = list(range(100))
@@ -211,8 +207,8 @@ class RandomSplitter:
     def split(
         self,
         role: Role,
-        conf: WindowConfig = DEFAULT_WINDOW_CONFIG,
-        rand: Optional[Random] = None
+        conf: WindowConfig,
+        rand: Random
     ) -> pd.DataFrame:
         pos_dfs = [project_df(k, positive_windows(v, conf, rand)) for (k, v) in self._marked.items()]
         all_pos_dfs = self._concat(pos_dfs)

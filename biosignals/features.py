@@ -1,6 +1,10 @@
 from typing import Any, Callable, List
 import numpy as np
 import pandas as pd
+import scipy.signal as ss
+import scipy.integrate as si
+import functools
+from biosignals.dataset import EEG_SAMPLE_RATE
 
 # Feature extraction
 
@@ -30,24 +34,36 @@ class ArrayExtractor(Extractor):
         return df.assign(**{self._name: series})
 
 
+# Compute the average power in the frequency band
+# From: https://stackoverflow.com/questions/44547669/python-numpy-equivalent-of-bandpower-from-matlab
+def bandpower(freq_low: float, freq_high: float, eeg: np.ndarray) -> float:
+    f, Pxx = ss.periodogram(eeg, fs=EEG_SAMPLE_RATE)
+    ind_min = int(np.argmax(f > freq_low) - 1)
+    ind_max = int(np.argmax(f > freq_high) - 1)
+    return si.trapz(Pxx[ind_min:ind_max], f[ind_min:ind_max])
+
+
 def band_power_extractor(name: str, freq_low: float, freq_high: float) -> Extractor:
-    def fn(eeg: np.ndarray) -> np.ndarray:
-        raise Exception('TODO')
+    fn = functools.partial(bandpower, freq_low, freq_high)
     return ArrayExtractor(name, fn, np.float64)
 
 
 # This comes from https://mne.tools/dev/auto_examples/time_frequency/time_frequency_global_field_power.html
 FREQ_BANDS = [
-    ('theta', 4, 7),
-    ('alpha', 8, 12),
-    ('beta', 13, 25),
-    ('gamma', 30, 45)
+    ('theta_power', 4, 7),
+    ('alpha_power', 8, 12),
+    ('beta_power', 13, 25),
+    ('gamma_power', 30, 45)
 ]
+
 
 # Feature extractors for band power
 FREQ_EXTRACTORS = [band_power_extractor(name, lo, hi) for (name, lo, hi) in FREQ_BANDS]
+
+
 # Feature extractors to use by default
-DEFAULT_EXTRACTORS = FREQ_EXTRACTORS
+def default_extractors() -> List[Extractor]:
+    return list(FREQ_EXTRACTORS)
 
 
 # Extracts features from the given windows
@@ -56,7 +72,7 @@ DEFAULT_EXTRACTORS = FREQ_EXTRACTORS
 # extractors: list of features extractors
 # Output:
 # dataframe with window_id, channel_id, and feature columns
-def extract_features(df: pd.DataFrame, extractors: List[Extractor] = DEFAULT_EXTRACTORS) -> pd.DataFrame:
+def extract_features(df: pd.DataFrame, extractors: List[Extractor]) -> pd.DataFrame:
     for ex in extractors:
         df = ex.extract(df)
     return df
