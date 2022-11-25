@@ -33,6 +33,7 @@ FILES = [
 
 
 # NOTE(ejconlon) This is just here to quickly observe clustering in the repl
+# Don't use it otherwise.
 def easy_cluster_channels(n_clusters=32) -> pd.DataFrame:
     x, _ = combined_dfs(set(PARTICIPANTS))
     return cluster_channels(x, n_clusters=n_clusters)
@@ -40,6 +41,14 @@ def easy_cluster_channels(n_clusters=32) -> pd.DataFrame:
 
 # Cluster channels to find closest to each cluster centroid
 # Takes as input the combined per_chan dataframe (from combined_dfs)
+# Input:
+# combined_chan_df: DataFrame with x, y, z, part, channel_id
+#   for each (part, channel_id)
+# n_clusters: number of clusters - should be < 64 (min number of channels)
+# Output:
+# DataFrame with x, y, z, part, channel_id, cluster_id
+#   for each (part, cluster_id) (where there will be fewer clusters than channels)
+#   that maps (part, cluster_id) -> channel_id
 def cluster_channels(combined_chan_df: pd.DataFrame, n_clusters=32) -> pd.DataFrame:
     x = combined_chan_df
     parts = sorted(set(x.part))
