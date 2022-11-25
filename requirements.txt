@@ -11,3 +11,4 @@ soundfile
 librosa
 keras
 tensorflow
+pyarrow

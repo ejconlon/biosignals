@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 import shutil
-from typing import Dict, List
+from typing import Dict, List, Optional
 import biosignals.dataset as bd
 import biosignals.split as bs
 import biosignals.features as bf
@@ -18,19 +19,19 @@ def prepare_clusters() -> pd.DataFrame:
     print(cluster_df)
     if not os.path.exists('prepared'):
         os.mkdir('prepared')
-    cluster_df.to_pickle('prepared/clusters.pickle')
+    cluster_df.to_parquet('prepared/clusters.parquet')
     return cluster_df
 
 
 # Read cluster assignments
 def read_clusters() -> pd.DataFrame:
     print('Reading clusters')
-    return pd.read_pickle('prepared/clusters.pickle')
+    return pd.read_parquet('prepared/clusters.parquet', use_nullable_dtypes=False)
 
 
 # Read cluster assignments (or make and cache them)
 def ensure_clusters() -> pd.DataFrame:
-    if os.path.exists('prepared/clusters.pickle'):
+    if os.path.exists('prepared/clusters.parquet'):
         return read_clusters()
     else:
         return prepare_clusters()
@@ -68,8 +69,8 @@ def prepare_splits(
             print('... adding cluster info')
             final_df = bd.add_cluster_info(data_df, cluster_df)
             print('... writing to disk')
-            dest_path = os.path.join(dest_dir, f'{r.pretty_name()}_{i}.pickle')
-            final_df.to_pickle(dest_path)
+            dest_path = os.path.join(dest_dir, f'{r.pretty_name()}_{i}.parquet')
+            final_df.to_parquet(dest_path)
 
 
 # An example of how to load and process data
@@ -125,12 +126,12 @@ def prepare_rand():
 
 
 # A simple proxy to lazy-load dataframes
+@dataclass(frozen=True)
 class LazyFrame:
-    def __init__(self, path: str):
-        self._path = path
+    path: str
 
-    def load(self) -> pd.DataFrame:
-        return pd.read_pickle(self._path)
+    def load(self, columns: Optional[List[str]] = None) -> pd.DataFrame:
+        return pd.read_parquet(self.path, columns=columns, use_nullable_dtypes=False)
 
 
 # Read prepared data from a directory
