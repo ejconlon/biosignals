@@ -1,7 +1,11 @@
+import shutil
+from typing import Dict, List
 import biosignals.dataset as bd
 import biosignals.split as bs
 import biosignals.features as bf
 from random import Random
+import pandas as pd
+import os
 
 # Full data preparation
 
@@ -56,3 +60,18 @@ def prepare():
     print(final_feat_df)
 
     # TODO Write prepared data to dist
+    write_prepared('rand', {bs.Role.TEST: [final_feat_df]})
+
+
+# Write prepared data to a directory
+def write_prepared(name: str, role_dfs: Dict[bs.Role, List[pd.DataFrame]]):
+    if not os.path.exists('prepared'):
+        os.mkdir('prepared')
+    dest_dir = os.path.join(f'prepared/{name}')
+    if os.path.exists(dest_dir):
+        shutil.rmtree(dest_dir)
+    os.mkdir(dest_dir)
+    for r, dfs in role_dfs.items():
+        for i, df in enumerate(dfs):
+            dest_path = os.path.join(dest_dir, f'{r.pretty_name()}_{i}.pickle')
+            df.to_pickle(dest_path)

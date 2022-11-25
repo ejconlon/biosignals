@@ -144,6 +144,9 @@ class Role(Enum):
     VALIDATE = 1
     TEST = 2
 
+    def pretty_name(self) -> str:
+        return self.name.lower()
+
 
 class Splitter:
     def __init__(self):
