@@ -1,5 +1,6 @@
 import shutil
 from typing import Dict, List
+from pandas.testing import assert_frame_equal
 import biosignals.dataset as bd
 import biosignals.split as bs
 import biosignals.features as bf
@@ -11,7 +12,8 @@ import os
 
 
 # An example of how to load and process data
-def prepare():
+# Tests writing and loading to the 'example' prepared dataset
+def prepare_example():
     # Random seed
     rand = Random(42)
 
@@ -60,7 +62,17 @@ def prepare():
     print(final_feat_df)
 
     # TODO Write prepared data to dist
-    write_prepared('rand', {bs.Role.TEST: [final_feat_df]})
+    prep = {bs.Role.TEST: [final_feat_df]}
+    write_prepared('example', prep)
+
+    # Check that we can read what we write
+    prep_read = read_prepared('example')
+    assert len(prep_read) == 3
+    assert len(prep_read[bs.Role.TRAIN]) == 0
+    assert len(prep_read[bs.Role.VALIDATE]) == 0
+    assert len(prep_read[bs.Role.TEST]) == 1
+    check_df = prep_read[bs.Role.TEST][0].load()
+    assert_frame_equal(final_feat_df, check_df)
 
 
 # Write prepared data to a directory
@@ -75,3 +87,23 @@ def write_prepared(name: str, role_dfs: Dict[bs.Role, List[pd.DataFrame]]):
         for i, df in enumerate(dfs):
             dest_path = os.path.join(dest_dir, f'{r.pretty_name()}_{i}.pickle')
             df.to_pickle(dest_path)
+
+
+# A simple proxy to lazy-load dataframes
+class LazyFrame:
+    def __init__(self, path: str):
+        self._path = path
+
+    def load(self) -> pd.DataFrame:
+        return pd.read_pickle(self._path)
+
+
+# Read prepared data from a directory
+def read_prepared(name: str) -> Dict[bs.Role, List[LazyFrame]]:
+    dest_dir = os.path.join(f'prepared/{name}')
+    assert os.path.isdir(dest_dir)
+    fns = sorted(os.listdir(dest_dir))
+    d = {}
+    for r in (bs.Role.TRAIN, bs.Role.VALIDATE, bs.Role.TEST):
+        d[r] = [LazyFrame(os.path.join(dest_dir, fn)) for fn in fns if fn.startswith(r.pretty_name())]
+    return d
