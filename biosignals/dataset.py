@@ -82,6 +82,7 @@ def cluster_channels(combined_chan_df: pd.DataFrame, n_clusters=32) -> pd.DataFr
         cluster_id = out_map[pair]
         cluster_ids.append(cluster_id)
     z.insert(0, 'cluster_id', pd.Series(cluster_ids, index=ixs, dtype=np.uint))
+    z = z.reset_index(drop=True)
     # Sanity checks
     # Assert there is a cluster entry for each participant
     for cluster_id in range(n_clusters):
@@ -138,12 +139,29 @@ def read_ieeg_data(part: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         return (eeg, stimulus, audio)
 
 
+# Only read eeg data
+def read_ieeg_data_only(part: str) -> np.ndarray:
+    full_fn = DATASET_FILE_FORMAT.format(part=part, fn='ieeg.nwb')
+    with pynwb.NWBHDF5IO(full_fn) as f:
+        container = f.read()
+        return container.acquisition['iEEG'].data[:].transpose()
+
+
 # Read a (eeg, stimulus, audio) for all participants
 def read_all_ieeg_data() -> Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]]:
     all_data: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
     for part in PARTICIPANTS:
         tup = read_ieeg_data(part)
         all_data[part] = tup
+    return all_data
+
+
+# Only read eeg data for all participants
+def read_all_ieeg_data_only() -> Dict[str, np.ndarray]:
+    all_data: Dict[str, np.ndarray] = {}
+    for part in PARTICIPANTS:
+        eeg = read_ieeg_data_only(part)
+        all_data[part] = eeg
     return all_data
 
 
@@ -343,9 +361,8 @@ class MarkedData:
 # Read marked data for all participants
 def read_marked_data() -> Dict[str, MarkedData]:
     part_onsets = read_manual_onsets()
-    part_arrays = read_all_ieeg_data()
+    part_eegs = read_all_ieeg_data_only()
     out = {}
     for part, onsets in part_onsets.items():
-        arrays = part_arrays[part]
-        out[part] = MarkedData(list(onsets), arrays[0])
+        out[part] = MarkedData(list(onsets), part_eegs[part])
     return out
