@@ -17,8 +17,8 @@ def prepare():
     # Clustering channels
     print('Clustering channels')
     per_chan, _ = bd.combined_dfs(set(bd.PARTICIPANTS))
-    clust_df = bd.cluster_channels(per_chan, n_clusters=32)
-    print(clust_df)
+    cluster_df = bd.cluster_channels(per_chan, n_clusters=32)
+    print(cluster_df)
 
     # Reading splits
 
@@ -50,5 +50,9 @@ def prepare():
     extractors = bf.default_extractors()
     test_feat_df = bf.extract_features(rand_test_df, extractors)
     print(test_feat_df)
+
+    # Add cluster/spatial info
+    final_feat_df = bd.add_cluster_info(cluster_df, test_feat_df)
+    print(final_feat_df)
 
     # TODO Write prepared data to dist

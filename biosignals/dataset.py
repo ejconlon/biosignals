@@ -47,8 +47,9 @@ def easy_cluster_channels(n_clusters=32) -> pd.DataFrame:
 # n_clusters: number of clusters - should be < 64 (min number of channels)
 # Output:
 # DataFrame with x, y, z, part, channel_id, cluster_id
-#   for each (part, cluster_id) (where there will be fewer clusters than channels)
-#   that maps (part, cluster_id) -> channel_id
+#   For each (part, cluster_id) with cluster_id >= 0,
+#   maps (part, cluster_id) -> channel_id .
+#   If cluster_id < 0 then it is not considered to be in a cluster.
 def cluster_channels(combined_chan_df: pd.DataFrame, n_clusters=32) -> pd.DataFrame:
     x = combined_chan_df
     parts = sorted(set(x.part))
@@ -70,29 +71,33 @@ def cluster_channels(combined_chan_df: pd.DataFrame, n_clusters=32) -> pd.DataFr
                     found = True
                     break
             assert found
-    # Filter to unique closest and assign cluster_id
-    x_filter = pd.MultiIndex.from_frame(x[['part', 'channel_id']])
-    z = x[x_filter.isin(out_map)].copy(deep=True)
+    # Assign cluster_id
     cluster_ids = []
-    ixs = []
-    for row_pair in z.iterrows():
-        ix, row = row_pair
-        ixs.append(ix)
+    for _, row in x.iterrows():
         pair = (row['part'], row['channel_id'])  # type: ignore
-        cluster_id = out_map[pair]
+        cluster_id = out_map.get(pair, -1)
         cluster_ids.append(cluster_id)
-    z.insert(0, 'cluster_id', pd.Series(cluster_ids, index=ixs, dtype=np.uint))
-    z = z.reset_index(drop=True)
+    z = x.copy(deep=True)
+    z.insert(0, 'cluster_id', pd.Series(cluster_ids, index=z.index, dtype=np.int_))
     # Sanity checks
     # Assert there is a cluster entry for each participant
     for cluster_id in range(n_clusters):
         y = z[z.cluster_id == cluster_id]
         assert len(y) == len(parts)
-    # Assert that each participant has n_clusters entries
-    for part in parts:
-        y = z[z.part == part]
-        assert len(y) == n_clusters
     return z
+
+
+# Add cluster information to the data dataframe (typically features)
+# Inputs:
+# cluster_df: dataframe with 'cluster_id', 'channel_id', 'part', 'x', 'y', 'z'
+# data_df: dataframe with 'channel_id', 'part', feature columns
+# Output:
+# dataframe with same columns as data_df plus 'cluster_id', 'x', 'y', 'z'
+def add_cluster_info(cluster_df: pd.DataFrame, data_df: pd.DataFrame) -> pd.DataFrame:
+    right_df = cluster_df[['part', 'channel_id', 'cluster_id', 'x', 'y', 'z']]
+    out_df = pd.merge(data_df, right_df, on=('part', 'channel_id'), how='inner')
+    assert len(out_df) == len(data_df)
+    return out_df
 
 
 # Sanity check that everything is present in the dataset
