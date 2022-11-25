@@ -158,9 +158,15 @@ class Splitter:
     # rand: optional random src
     # Output:
     # df with 'part', 'window_id', 'label', 'channel_id', ...
-    def split(self, role: Role, conf: WindowConfig, rand: Random) -> pd.DataFrame:
-        pos_dfs = self._select(role, conf, rand, positive_windows, True)
-        neg_dfs = self._select(role, conf, rand, negative_windows, False)
+    def split(
+        self,
+        marked: Dict[str, MarkedData],
+        role: Role,
+        conf: WindowConfig,
+        rand: Random
+    ) -> pd.DataFrame:
+        pos_dfs = self._select(marked, role, conf, rand, positive_windows, True)
+        neg_dfs = self._select(marked, role, conf, rand, negative_windows, False)
         assert len(pos_dfs) == len(neg_dfs)
         return pd.concat((pos_dfs, neg_dfs), ignore_index=True)
 
@@ -175,7 +181,15 @@ class Splitter:
             mod_dfs.append(df)
         return pd.concat(mod_dfs, ignore_index=True)
 
-    def _select(self, role: Role, conf: WindowConfig, rand: Random, windows: Any, label: bool) -> pd.DataFrame:
+    def _select(
+        self,
+        marked: Dict[str, MarkedData],
+        role: Role,
+        conf: WindowConfig,
+        rand: Random,
+        windows: Any,
+        label: bool
+    ) -> pd.DataFrame:
         raise NotImplementedError()
 
 
@@ -190,14 +204,13 @@ def generate_perm(rand: Random) -> List[int]:
 
 # Splits data randomly by role according to the percentage breakdown and permutation
 class RandomSplitter(Splitter):
-    def __init__(self, marked: Dict[str, MarkedData], pct: Dict[Role, int], perm: List[int]):
+    def __init__(self, perm: List[int], pct: Dict[Role, int]):
         super().__init__()
-        self._marked = marked
+        self._perm = perm
+        assert sorted(perm) == list(range(100))
         self._pct = pct
         total_pct = sum(pct.values())
         assert total_pct == 100
-        self._perm = perm
-        assert sorted(perm) == list(range(100))
 
     def _min_pct(self, role: Role) -> int:
         if role == Role.TRAIN:
@@ -215,8 +228,16 @@ class RandomSplitter(Splitter):
         else:
             return 100
 
-    def _select(self, role: Role, conf: WindowConfig, rand: Random, windows: Any, label: bool) -> pd.DataFrame:
-        dfs = [project_df(k, windows(v, conf, rand)) for (k, v) in self._marked.items()]
+    def _select(
+        self,
+        marked: Dict[str, MarkedData],
+        role: Role,
+        conf: WindowConfig,
+        rand: Random,
+        windows: Any,
+        label: bool
+    ) -> pd.DataFrame:
+        dfs = [project_df(k, windows(v, conf, rand)) for (k, v) in marked.items()]
         all_dfs = self._concat(dfs)
         all_dfs['label'] = label
         min_pct = self._min_pct(role)
@@ -230,16 +251,23 @@ class RandomSplitter(Splitter):
 
 # Splits by participant
 class PartSplitter(Splitter):
-    def __init__(self, marked: Dict[str, MarkedData], role_parts: Dict[Role, Set[str]]):
+    def __init__(self, role_parts: Dict[Role, Set[str]]):
         super().__init__()
-        self._marked = marked
         self._role_parts = role_parts
 
-    def _select(self, role: Role, conf: WindowConfig, rand: Random, windows: Any, label: bool) -> pd.DataFrame:
+    def _select(
+        self,
+        marked: Dict[str, MarkedData],
+        role: Role,
+        conf: WindowConfig,
+        rand: Random,
+        windows: Any,
+        label: bool
+    ) -> pd.DataFrame:
         parts = self._role_parts[role]
         dfs = [
             project_df(k, windows(v, conf, rand))
-            for (k, v) in self._marked.items() if k in parts
+            for (k, v) in marked.items() if k in parts
         ]
         all_dfs = self._concat(dfs)
         all_dfs['label'] = label
