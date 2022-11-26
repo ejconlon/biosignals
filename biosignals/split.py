@@ -45,16 +45,6 @@ class WindowConfig:
         return False
 
 
-# EEG_SAMPS_PER_MS = 1024 / 1000
-# Since samps/ms is basically 1, we just use round numbers here
-DEFAULT_WINDOW_CONFIG = WindowConfig(
-    pre_len=500,
-    post_len=250,
-    max_jitter=50,
-    exclude_len=500
-)
-
-
 # Extract all positive windows (marked by onsets) from eeg data
 # Inputs:
 # eeg: numpy array with shape (num_channels, num_trial_samples)

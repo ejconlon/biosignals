@@ -48,24 +48,6 @@ def band_power_extractor(name: str, freq_low: float, freq_high: float) -> Extrac
     return ArrayExtractor(name, fn, np.float64)
 
 
-# This comes from https://mne.tools/dev/auto_examples/time_frequency/time_frequency_global_field_power.html
-FREQ_BANDS = [
-    ('theta_power', 4, 7),
-    ('alpha_power', 8, 12),
-    ('beta_power', 13, 25),
-    ('gamma_power', 30, 45)
-]
-
-
-# Feature extractors for band power
-FREQ_EXTRACTORS = [band_power_extractor(name, lo, hi) for (name, lo, hi) in FREQ_BANDS]
-
-
-# Feature extractors to use by default
-def default_extractors() -> List[Extractor]:
-    return list(FREQ_EXTRACTORS)
-
-
 # Extracts features from the given windows
 # Inputs:
 # df: dataframe with window_id, channel_id, eeg

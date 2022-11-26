@@ -11,6 +11,34 @@ import os
 # Full data preparation
 
 
+# EEG_SAMPS_PER_MS = 1024 / 1000
+# Since samps/ms is basically 1, we just use round numbers here
+DEFAULT_WINDOW_CONFIG = bs.WindowConfig(
+    pre_len=500,
+    post_len=250,
+    max_jitter=50,
+    exclude_len=500
+)
+
+
+# This comes from https://mne.tools/dev/auto_examples/time_frequency/time_frequency_global_field_power.html
+FREQ_BANDS = [
+    ('theta_power', 4, 7),
+    ('alpha_power', 8, 12),
+    ('beta_power', 13, 25),
+    ('gamma_power', 30, 45)
+]
+
+
+# Feature extractors for band power
+FREQ_EXTRACTORS = [bf.band_power_extractor(name, lo, hi) for (name, lo, hi) in FREQ_BANDS]
+
+
+# Feature extractors to use by default
+def default_extractors() -> List[bf.Extractor]:
+    return list(FREQ_EXTRACTORS)
+
+
 # Prepare the cluster assignments
 def prepare_clusters() -> pd.DataFrame:
     print('Preparing clusters')
@@ -60,28 +88,31 @@ def prepare_splits(
     os.mkdir(dest_dir)
 
     print('Preparing splits')
-    for r, c in spec.items():
-        for i in range(c):
-            print(f'Splitting {r.pretty_name()} {i}')
-            data_df = splitter.split(marked, r, conf=conf, rand=rand)
-            print('... adding features')
-            bf.extract_features(data_df, extractors)
-            print('... adding cluster info')
-            final_df = bd.add_cluster_info(data_df, cluster_df)
-            print('... writing to disk')
-            dest_path = os.path.join(dest_dir, f'{r.pretty_name()}_{i}.parquet')
-            final_df.to_parquet(dest_path)
+    # Go in this order so feature scaling works when it's added
+    for r in (bs.Role.TRAIN, bs.Role.VALIDATE, bs.Role.TEST):
+        c = spec.get(r)
+        if c is not None:
+            for i in range(c):
+                print(f'Splitting {r.pretty_name()} {i}')
+                data_df = splitter.split(marked, r, conf=conf, rand=rand)
+                print('... adding features')
+                bf.extract_features(data_df, extractors)
+                print('... adding cluster info')
+                final_df = bd.add_cluster_info(data_df, cluster_df)
+                print('... writing to disk')
+                dest_path = os.path.join(dest_dir, f'{r.pretty_name()}_{i}.parquet')
+                final_df.to_parquet(dest_path)
 
 
 # An example of how to load and process data
 # Tests writing and loading to the 'example' prepared dataset
 def prepare_example():
     rand = Random(42)
-    conf = bs.DEFAULT_WINDOW_CONFIG
+    conf = DEFAULT_WINDOW_CONFIG
     perm = bs.generate_perm(rand)
     splitter = bs.RandomSplitter(
         perm, {bs.Role.TRAIN: 98, bs.Role.VALIDATE: 1, bs.Role.TEST: 1})
-    extractors = bf.default_extractors()
+    extractors = default_extractors()
 
     prepare_splits(
         name='example',
@@ -100,6 +131,7 @@ def prepare_example():
     assert len(prep_read[bs.Role.TEST]) == 1
     check_df = prep_read[bs.Role.TEST][0].load()
     assert len(check_df) > 0
+    print(check_df)
 
 
 # Prepare a randomly-split set
