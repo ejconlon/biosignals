@@ -186,21 +186,42 @@ def prepare_rand():
     )
 
 
-# A simple proxy to lazy-load dataframes
+# Loads dataframes from files/memory
+class FrameLoader:
+    def load(self, columns: Optional[List[str]] = None) -> pd.DataFrame:
+        raise NotImplementedError()
+
+
+# Loads a dataframe from a Parquet file
 @dataclass(frozen=True)
-class LazyFrame:
+class ParquetFrameLoader(FrameLoader):
     path: str
 
     def load(self, columns: Optional[List[str]] = None) -> pd.DataFrame:
         return pd.read_parquet(self.path, columns=columns, use_nullable_dtypes=False)
 
 
+# "Loads" a dataframe from memory
+@dataclass(frozen=True)
+class MemoryFrameLoader(FrameLoader):
+    frame: pd.DataFrame
+
+    def load(self, columns: Optional[List[str]] = None) -> pd.DataFrame:
+        if columns is None:
+            return self.frame
+        else:
+            return self.frame[columns]
+
+
 # Read prepared data from a directory
-def read_prepared(name: str) -> Dict[bs.Role, List[LazyFrame]]:
+def read_prepared(name: str) -> Dict[bs.Role, List[FrameLoader]]:
     dest_dir = os.path.join(f'prepared/{name}')
     assert os.path.isdir(dest_dir)
     fns = sorted(os.listdir(dest_dir))
-    d = {}
+    d: Dict[bs.Role, List[FrameLoader]] = {}
     for r in (bs.Role.TRAIN, bs.Role.VALIDATE, bs.Role.TEST):
-        d[r] = [LazyFrame(os.path.join(dest_dir, fn)) for fn in fns if fn.startswith(r.pretty_name())]
+        d[r] = [
+            ParquetFrameLoader(os.path.join(dest_dir, fn))
+            for fn in fns if fn.startswith(r.pretty_name())
+        ]
     return d
