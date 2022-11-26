@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import pickle
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from sklearn.naive_bayes import GaussianNB
 # from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
@@ -13,6 +13,23 @@ from sklearn.utils import shuffle
 from functools import reduce
 import operator
 from numpy.random import RandomState
+from enum import Enum
+
+
+# Classification strategy
+class Strategy(Enum):
+    # Ignore channel ids and train/predict based on observing
+    # and one channel. (1-channel-at-a-time samples, 1 classifier)
+    # (This keeps unclustered channel info)
+    COMBINED = 0
+    # Use clustering to order channels and train/predict based
+    # on observing all channels. (N-channel-at-a-time samples, 1 classifier)
+    # (This removes unclustered channel info)
+    MULTI = 1
+    # Train one classifier for each channel and vote on the
+    # final prediction (1-channel-at-a-time samples, N classifiers)
+    # (This removes unclustered channel info)
+    ENSEMBLE = 2
 
 
 # Results (true/false negatives/positives)
@@ -129,12 +146,14 @@ def split_df(
 class SkModel(Model):
     # NOTE(ejconlon) I don't have a good type for model
     # but it should be an sklearn model instance (i.e. has fit, predict)
-    def __init__(self, model: Any):
-        self._model = model
+    def __init__(self, model_class: Any, model_args: Dict[str, Any], strategy: Strategy):
+        assert strategy == Strategy.COMBINED, 'TODO support more strategies'
+        self._model = model_class(**model_args)
+        self._strategy = strategy
 
     # Overload this to extract features and labels
     def _load_frame(self, ld: bp.FrameLoader, rand: Optional[RandomState]) -> Tuple[np.ndarray, np.ndarray]:
-        # TODO support multi-channel classification
+        assert self._strategy == Strategy.COMBINED, 'TODO support more strategies'
         return split_df(*sk_load_single(ld), rand=rand)
 
     def _train_one(self, x: np.ndarray, y_true: np.ndarray):
@@ -165,13 +184,13 @@ class SkModel(Model):
 def test_models():
     rand = RandomState(42)
     skmodels = [
-        GaussianNB(),
-        RandomForestClassifier(),
-        # SVC(kernel='rbf'),
+        (GaussianNB, {}, Strategy.COMBINED),
+        (RandomForestClassifier, {}, Strategy.COMBINED),
+        # (SVC, {'kernel': 'rbf'}, Strategy.COMBINED),
     ]
-    for skm in skmodels:
-        print(f'Training model {type(skm)}')
-        model = SkModel(skm)
+    for klass, args, strat in skmodels:
+        print(f'Training model {klass} {args} {strat}')
+        model = SkModel(klass, args, strat)
         _, tres = model.execute('rand', rand)
         print(tres)
         print('accuracy', tres.accuracy)
