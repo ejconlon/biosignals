@@ -3,12 +3,16 @@ import shutil
 from typing import Dict, List, Optional
 import biosignals.dataset as bd
 import biosignals.split as bs
+import biosignals.scale as bc
 import biosignals.features as bf
 from random import Random
 import pandas as pd
 import os
 
 # Full data preparation
+
+# Number of clusters - if this changes, you have to regen all data
+NUM_CLUSTERS = 32
 
 
 # EEG_SAMPS_PER_MS = 1024 / 1000
@@ -39,11 +43,26 @@ def default_extractors() -> List[bf.Extractor]:
     return list(FREQ_EXTRACTORS)
 
 
+# Default scaler types for each column.
+# If you don't want any scaling, pass an empty dict to prepare_splits.
+SCALER_TYPES = {
+    'x': bc.CenteredScalerType(),
+    'y': bc.CenteredScalerType(),
+    'z': bc.CenteredScalerType(),
+    'label': bc.StaticScalerType(bc.BoolScaler()),
+    'cluster_id': bc.StaticScalerType(bc.IntRangeScaler.range(NUM_CLUSTERS)),
+    'theta_power': bc.CenteredScalerType(),
+    'alpha_power': bc.CenteredScalerType(),
+    'beta_power': bc.CenteredScalerType(),
+    'gamma_power': bc.CenteredScalerType(),
+}
+
+
 # Prepare the cluster assignments
 def prepare_clusters() -> pd.DataFrame:
     print('Preparing clusters')
     per_chan, _ = bd.combined_dfs(set(bd.PARTICIPANTS))
-    cluster_df = bd.cluster_channels(per_chan, n_clusters=32)
+    cluster_df = bd.cluster_channels(per_chan, n_clusters=NUM_CLUSTERS)
     print(cluster_df)
     if not os.path.exists('prepared'):
         os.mkdir('prepared')
@@ -72,6 +91,7 @@ def prepare_splits(
     rand: Random,
     splitter: bs.Splitter,
     extractors: List[bf.Extractor],
+    scaler_types: Dict[str, bc.ScalerType],
     spec: Dict[bs.Role, int]
 ):
     cluster_df = ensure_clusters()
@@ -88,7 +108,8 @@ def prepare_splits(
     os.mkdir(dest_dir)
 
     print('Preparing splits')
-    # Go in this order so feature scaling works when it's added
+    scalers = None
+    # Go in this order so feature scaling looks at the largest set first
     for r in (bs.Role.TRAIN, bs.Role.VALIDATE, bs.Role.TEST):
         c = spec.get(r)
         if c is not None:
@@ -99,6 +120,11 @@ def prepare_splits(
                 bf.extract_features(data_df, extractors)
                 print('... adding cluster info')
                 final_df = bd.add_cluster_info(data_df, cluster_df)
+                print('... scaling')
+                if scalers is None:
+                    scalers = bc.construct_all(scaler_types, final_df)
+                else:
+                    bc.scale_all(scalers, final_df)
                 print('... writing to disk')
                 dest_path = os.path.join(dest_dir, f'{r.pretty_name()}_{i}.parquet')
                 final_df.to_parquet(dest_path)
@@ -120,6 +146,7 @@ def prepare_example():
         rand=rand,
         splitter=splitter,
         extractors=extractors,
+        scaler_types=SCALER_TYPES,
         spec={bs.Role.TEST: 1}
     )
 
@@ -149,6 +176,7 @@ def prepare_rand():
         rand=rand,
         splitter=splitter,
         extractors=extractors,
+        scaler_types=SCALER_TYPES,
         spec={
             bs.Role.TRAIN: 1,
             bs.Role.VALIDATE: 1,

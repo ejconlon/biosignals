@@ -44,13 +44,13 @@ def easy_cluster_channels(n_clusters=32) -> pd.DataFrame:
 # Input:
 # combined_chan_df: DataFrame with x, y, z, part, channel_id
 #   for each (part, channel_id)
-# n_clusters: number of clusters - should be < 64 (min number of channels)
+# n_clusters: number of clusters - should be < 64 (min number of channels), 32 is ok?
 # Output:
 # DataFrame with x, y, z, part, channel_id, cluster_id
 #   For each (part, cluster_id) with cluster_id >= 0,
 #   maps (part, cluster_id) -> channel_id .
 #   If cluster_id < 0 then it is not considered to be in a cluster.
-def cluster_channels(combined_chan_df: pd.DataFrame, n_clusters=32) -> pd.DataFrame:
+def cluster_channels(combined_chan_df: pd.DataFrame, n_clusters: int) -> pd.DataFrame:
     x = combined_chan_df
     parts = sorted(set(x.part))
     k = BisectingKMeans(n_clusters=n_clusters).fit(x[['x', 'y', 'z']])
