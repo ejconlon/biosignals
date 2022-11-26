@@ -10,8 +10,6 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix
 from sklearn.utils import shuffle
-from functools import reduce
-import operator
 from numpy.random import RandomState
 from enum import Enum
 
@@ -151,10 +149,20 @@ class SkModel(Model):
         self._model = model_class(**model_args)
         self._strategy = strategy
 
-    # Overload this to extract features and labels
-    def _load_frame(self, ld: bp.FrameLoader, rand: Optional[RandomState]) -> Tuple[np.ndarray, np.ndarray]:
+    def _load_one(self, ld: bp.FrameLoader, rand: Optional[RandomState]) -> Tuple[np.ndarray, np.ndarray]:
         assert self._strategy == Strategy.COMBINED, 'TODO support more strategies'
         return split_df(*sk_load_single(ld), rand=rand)
+
+    def _load_all(self, lds: List[bp.FrameLoader], rand: Optional[RandomState]) -> Tuple[np.ndarray, np.ndarray]:
+        xs = []
+        ys = []
+        for ld in lds:
+            x, y = self._load_one(ld, rand)
+            xs.append(x)
+            ys.append(y)
+        x = np.concatenate(xs)
+        y = np.concatenate(ys)
+        return (x, y)
 
     def _train_one(self, x: np.ndarray, y_true: np.ndarray):
         self._model.fit(x, y_true)
@@ -169,15 +177,17 @@ class SkModel(Model):
         validate_loaders: List[bp.FrameLoader],
         rand: Optional[RandomState]
     ) -> Results:
-        for ld in train_loaders:
-            self._train_one(*self._load_frame(ld, rand))
-        return self.test_all(train_loaders)
+        # Very few models are incremental, so we have to fit all at once,
+        # which means we have to load and concat all training data now.
+        x, y = self._load_all(train_loaders, rand)
+        # Not every model has fit_predict, so we have to fit and predict
+        # separately if we want to see perf on the training set.
+        self._train_one(x, y)
+        return self._test_one(x, y)
 
     def test_all(self, test_loaders: List[bp.FrameLoader]) -> Results:
-        return reduce(
-            operator.add,
-            (self._test_one(*self._load_frame(ld, None)) for ld in test_loaders)
-        )
+        x, y = self._load_all(test_loaders, None)
+        return self._test_one(x, y)
 
 
 # Test training with some sklearn models
