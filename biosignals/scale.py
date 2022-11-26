@@ -14,9 +14,12 @@ class Scaler:
             v = row[col]
             w = self._scale_val(v)
             ws.append(w)
-        df[col] = pd.Series(ws, dtype=float)
+        df[col] = pd.Series(ws, dtype=self._dtype())
 
-    def _scale_val(self, v: Any) -> float:
+    def _dtype(self) -> Any:
+        return float
+
+    def _scale_val(self, v: Any) -> Any:
         raise NotImplementedError()
 
 
@@ -61,10 +64,13 @@ class CenteredScaler(Scaler):
         return float(v) / self.width
 
 
-# Sends False to 0.0 and True to 1.0
+# Sends False to 0 and True to 1
 class BoolScaler(Scaler):
-    def _scale_val(self, v: Any) -> float:
-        return 1.0 if v else 0.0
+    def _scale_val(self, v: Any) -> int:
+        return 1 if v else 0
+
+    def _dtype(self) -> Any:
+        return int
 
 
 # Some scalers need to observe some data to come up with a reasonable range
