@@ -164,11 +164,11 @@ def prepare_example():
 # Prepare a randomly-split set
 def prepare_rand():
     rand = Random(42)
-    conf = bs.DEFAULT_WINDOW_CONFIG
+    conf = DEFAULT_WINDOW_CONFIG
     perm = bs.generate_perm(rand)
     splitter = bs.RandomSplitter(
         perm, {bs.Role.TRAIN: 80, bs.Role.VALIDATE: 10, bs.Role.TEST: 10})
-    extractors = bf.default_extractors()
+    extractors = default_extractors()
 
     prepare_splits(
         name='rand',
