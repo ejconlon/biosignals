@@ -1,40 +1,45 @@
-# The model designs follow the SS classifier paper.
-# They used keras so I've just kept it that way for now... We can switch to torch later if we want...
 from dataclasses import dataclass
-from typing import Any, List, Tuple
-from keras.models import Sequential
-from keras.layers import Dense
-from keras.layers import LSTM, GRU, Activation  # Dropout, BatchNormalization
-# from keras.layers.embeddings import Embedding
-# from keras.preprocessing import sequence
+import pickle
+from typing import Any, List, Optional, Tuple
 from sklearn.naive_bayes import GaussianNB
+# from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
 import biosignals.prepare as bp
+import biosignals.split as bs
 import numpy as np
+import pandas as pd
 from sklearn.metrics import confusion_matrix
+from sklearn.utils import shuffle
 from functools import reduce
 import operator
+from numpy.random import RandomState
 
 
 # Results (true/false negatives/positives)
 @dataclass(frozen=True)
 class Results:
-    size: int
     tn: int
     fp: int
     fn: int
     tp: int
 
+    @property
+    def size(self) -> int:
+        return self.tn + self.fp + self.fn + self.tp
+
+    @property
+    def accuracy(self) -> float:
+        return float(self.tn + self.tp) / self.size
+
     @classmethod
     def from_pred(cls, y_true: np.ndarray, y_pred: np.ndarray) -> 'Results':
-        assert len(y_true.shape) == 1
-        size = y_true.shape[0]
-        assert y_pred.shape == size
+        assert y_pred.shape == y_true.shape
         tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-        return cls(size=size, tn=tn, fp=fp, fn=fn, tp=tp)
+        assert tn + fp + fn + tp == y_true.shape[0]
+        return cls(tn=tn, fp=fp, fn=fn, tp=tp)
 
     def __add__(self, other: 'Results') -> 'Results':
         return Results(
-            size=self.size + other.size,
             tn=self.tn + other.tn,
             fp=self.fp + other.fp,
             fn=self.fn + other.fn,
@@ -45,17 +50,79 @@ class Results:
 # Abstract definition for a model
 class Model:
     # Train on all train/validate datasets
-    # Return final results for validation
+    # Return final results for training set
     def train_all(
         self,
         train_loaders: List[bp.FrameLoader],
-        validate_loaders: List[bp.FrameLoader]
+        validate_loaders: List[bp.FrameLoader],
+        rand: Optional[RandomState]
     ) -> Results:
         raise NotImplementedError()
 
     # Test on all test datasets
     def test_all(self, test_loaders: List[bp.FrameLoader]) -> Results:
         raise NotImplementedError()
+
+    # Shorthand for training and testing on a prepared set
+    def execute(self, prep_name: str, rand: Optional[RandomState]) -> Tuple[Results, Results]:
+        lds = bp.read_prepared(prep_name)
+        train_res = self.train_all(lds[bs.Role.TRAIN], lds[bs.Role.VALIDATE], rand)
+        test_res = self.test_all(lds[bs.Role.TEST])
+        return (train_res, test_res)
+
+    # Save model to the given path
+    def save(self, path: str):
+        with open(path, 'wb') as f:
+            pickle.dump(self, f)
+
+    # Load model from the given path
+    @classmethod
+    def load(cls, path: str) -> 'Model':
+        with open(path, 'rb') as f:
+            return pickle.load(f)
+
+
+SK_FEATURES = [
+    'x', 'y', 'z',
+    'theta_power', 'alpha_power', 'beta_power', 'gamma_power'
+]
+
+
+# Load/transform features for single-channel classification
+def sk_load_single(loader: bp.FrameLoader) -> Tuple[List[str], str, pd.DataFrame]:
+    columns = list(SK_FEATURES)
+    columns.extend(['label'])
+    df = loader.load(columns)
+    return (SK_FEATURES, 'label', df)
+
+
+# Load/transform features for multi-channel classification
+def sk_load_multi(loader: bp.FrameLoader, n_channels: int) -> Tuple[List[str], str, pd.DataFrame]:
+    columns = list(SK_FEATURES)
+    columns.extend(['cluster_id', 'label'])
+    df = loader.load(columns)
+    # TODO filter clusters, generate feature columns etc
+    raise Exception('TODO')
+
+
+# Split the given dataframe and shuffle the numpy arrays
+def split_df(
+    feat_cols: List[str],
+    lab_col: str,
+    df: pd.DataFrame,
+    rand: Optional[RandomState]
+) -> Tuple[np.ndarray, np.ndarray]:
+    x = df[feat_cols].to_numpy()
+    y = df[[lab_col]].to_numpy().ravel()
+    assert x.shape == (len(df), len(feat_cols))
+    assert y.shape == (len(df),)
+    if rand is None:
+        return (x, y)
+    else:
+        x_shuf, y_shuf = shuffle(x, y, random_state=rand)
+        assert x_shuf.shape == x.shape
+        assert y_shuf.shape == y.shape
+        return (x_shuf, y_shuf)
 
 
 # An sklearn model
@@ -66,62 +133,45 @@ class SkModel(Model):
         self._model = model
 
     # Overload this to extract features and labels
-    def load(self, frame_loader: bp.FrameLoader) -> Tuple[np.ndarray, np.ndarray]:
-        raise NotImplementedError()
+    def _load_frame(self, ld: bp.FrameLoader, rand: Optional[RandomState]) -> Tuple[np.ndarray, np.ndarray]:
+        # TODO support multi-channel classification
+        return split_df(*sk_load_single(ld), rand=rand)
 
-    def train_one(self, x: np.ndarray, y_true: np.ndarray):
+    def _train_one(self, x: np.ndarray, y_true: np.ndarray):
         self._model.fit(x, y_true)
 
-    def test_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
+    def _test_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
         y_pred = self._model.predict(x)
         return Results.from_pred(y_true, y_pred)
 
     def train_all(
         self,
         train_loaders: List[bp.FrameLoader],
-        validate_loaders: List[bp.FrameLoader]
+        validate_loaders: List[bp.FrameLoader],
+        rand: Optional[RandomState]
     ) -> Results:
         for ld in train_loaders:
-            self.train_one(*self.load(ld))
-        return self.test_all(validate_loaders)
+            self._train_one(*self._load_frame(ld, rand))
+        return self.test_all(train_loaders)
 
     def test_all(self, test_loaders: List[bp.FrameLoader]) -> Results:
-        return reduce(operator.add, (self.test_one(*self.load(ld)) for ld in test_loaders))
+        return reduce(
+            operator.add,
+            (self._test_one(*self._load_frame(ld, None)) for ld in test_loaders)
+        )
 
 
-# Constructs and returns a GRU model. Call predict(<data>) on the returned model to make predictions on <data>.
-def GRU_Model(train_data, train_labels):
-    model = Sequential()
-    model.add(GRU(512, input_shape=(train_data.shape[1], train_data.shape[2]), return_sequences=True))
-    # model.add(BatchNormalization())
-    model.add(Activation("relu"))
-    # model.add(Dropout(0.5))
-    model.add(GRU(256))
-    model.add(Dense(1, activation='sigmoid'))
-    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-    # model.build()
-    print(model.summary())
-    model.fit(train_data, train_labels, epochs=10, batch_size=64, verbose=1)
-    return model
-
-
-# Constructs and returns a LSTM model. Call predict(<data>) on the returned model to make predictions on <data>.
-def LSTM_Model(train_data, train_labels):
-    model = Sequential()
-    model.add(LSTM(512, input_shape=(train_data.shape[1], train_data.shape[2]), return_sequences=True))
-    # model.add(BatchNormalization())
-    model.add(Activation("relu"))
-    # model.add(Dropout(0.5))
-    model.add(LSTM(256))
-    model.add(Dense(1, activation='sigmoid'))
-    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-    # model.build()
-    print(model.summary())
-    model.fit(train_data, train_labels, epochs=10, batch_size=64, verbose=1)
-    return model
-
-
-# Constructs and returns a Naive Bayes model. Call predict(<data>) on the returned model to make predictions on <data>.
-def Naive_Bayes(train_data, train_labels):
-    gnb = GaussianNB()
-    return gnb.fit(train_data, train_labels)
+# Test training with some sklearn models
+def test_models():
+    rand = RandomState(42)
+    skmodels = [
+        GaussianNB(),
+        RandomForestClassifier(),
+        # SVC(kernel='rbf'),
+    ]
+    for skm in skmodels:
+        print(f'Training model {type(skm)}')
+        model = SkModel(skm)
+        _, tres = model.execute('rand', rand)
+        print(tres)
+        print('accuracy', tres.accuracy)
