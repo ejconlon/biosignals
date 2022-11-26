@@ -50,11 +50,12 @@ SCALER_TYPES = {
     'y': bc.CenteredScalerType(),
     'z': bc.CenteredScalerType(),
     'label': bc.StaticScalerType(bc.BoolScaler()),
-    'cluster_id': bc.StaticScalerType(bc.IntRangeScaler.range(NUM_CLUSTERS)),
     'theta_power': bc.CenteredScalerType(),
     'alpha_power': bc.CenteredScalerType(),
     'beta_power': bc.CenteredScalerType(),
     'gamma_power': bc.CenteredScalerType(),
+    # Keep this as a categorical variable?
+    # 'cluster_id': bc.StaticScalerType(bc.IntRangeScaler.range(NUM_CLUSTERS)),
 }
 
 
