@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sklearn.ensemble import RandomForestClassifier
 import biosignals.prepare as bp
 import biosignals.split as bs
+import biosignals.evaluation as be
 import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix
@@ -217,6 +218,7 @@ class SkModel(Model):
 
     def _test_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
         y_pred = self._model.predict(x)
+        be.evaluate_model(y_pred, y_true)
         return Results.from_pred(y_true, y_pred)
 
     def train_all(

@@ -12,7 +12,7 @@ from keras.layers import LSTM, GRU, Activation  # Dropout, BatchNormalization
 
 
 # Constructs and returns a GRU model. Call predict(<data>) on the returned model to make predictions on <data>.
-def GRU_Model(train_data, train_labels):
+def GRU_Model(train_data, train_labels, num_epochs = 10, batch_size = 64, verbose = 1):
     model = Sequential()
     model.add(GRU(512, input_shape=(train_data.shape[1], train_data.shape[2]), return_sequences=True))
     # model.add(BatchNormalization())
@@ -23,12 +23,12 @@ def GRU_Model(train_data, train_labels):
     model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
     # model.build()
     print(model.summary())
-    model.fit(train_data, train_labels, epochs=10, batch_size=64, verbose=1)
+    model.fit(train_data, train_labels, epochs=num_epochs, batch_size=batch_size, verbose=verbose)
     return model
 
 
 # Constructs and returns a LSTM model. Call predict(<data>) on the returned model to make predictions on <data>.
-def LSTM_Model(train_data, train_labels):
+def LSTM_Model(train_data, train_labels,  num_epochs = 10, batch_size = 64, verbose = 1):
     model = Sequential()
     model.add(LSTM(512, input_shape=(train_data.shape[1], train_data.shape[2]), return_sequences=True))
     # model.add(BatchNormalization())
@@ -39,5 +39,5 @@ def LSTM_Model(train_data, train_labels):
     model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
     # model.build()
     print(model.summary())
-    model.fit(train_data, train_labels, epochs=10, batch_size=64, verbose=1)
+    model.fit(train_data, train_labels, epochs=num_epochs, batch_size=batch_size, verbose=verbose)
     return model
