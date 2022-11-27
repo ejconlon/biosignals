@@ -49,13 +49,10 @@ SCALER_TYPES = {
     'x': bc.CenteredScalerType(),
     'y': bc.CenteredScalerType(),
     'z': bc.CenteredScalerType(),
-    'label': bc.StaticScalerType(bc.BoolScaler()),
     'theta_power': bc.CenteredScalerType(),
     'alpha_power': bc.CenteredScalerType(),
     'beta_power': bc.CenteredScalerType(),
     'gamma_power': bc.CenteredScalerType(),
-    # Keep this as a categorical variable?
-    # 'cluster_id': bc.StaticScalerType(bc.IntRangeScaler.range(NUM_CLUSTERS)),
 }
 
 
@@ -136,9 +133,9 @@ def prepare_splits(
 def prepare_example():
     rand = Random(42)
     conf = DEFAULT_WINDOW_CONFIG
-    perm = bs.generate_perm(rand)
+    perms = bs.generate_perms(bd.PARTICIPANTS, rand)
     splitter = bs.RandomSplitter(
-        perm, {bs.Role.TRAIN: 98, bs.Role.VALIDATE: 1, bs.Role.TEST: 1})
+        perms, {bs.Role.TRAIN: 98, bs.Role.VALIDATE: 1, bs.Role.TEST: 1})
     extractors = default_extractors()
 
     prepare_splits(
@@ -166,9 +163,9 @@ def prepare_example():
 def prepare_rand():
     rand = Random(42)
     conf = DEFAULT_WINDOW_CONFIG
-    perm = bs.generate_perm(rand)
+    perms = bs.generate_perms(bd.PARTICIPANTS, rand)
     splitter = bs.RandomSplitter(
-        perm, {bs.Role.TRAIN: 80, bs.Role.VALIDATE: 10, bs.Role.TEST: 10})
+        perms, {bs.Role.TRAIN: 80, bs.Role.VALIDATE: 10, bs.Role.TEST: 10})
     extractors = default_extractors()
 
     prepare_splits(

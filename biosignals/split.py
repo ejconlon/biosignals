@@ -45,6 +45,13 @@ class WindowConfig:
         return False
 
 
+# Return true if onset can be used to construct an in-bounds window
+def is_valid_onset(onset: int, num_samps: int, conf: WindowConfig) -> bool:
+    start = conf.start(onset)
+    end = conf.end(onset)
+    return start >= 0 and end <= num_samps
+
+
 # Extract all positive windows (marked by onsets) from eeg data
 # Inputs:
 # eeg: numpy array with shape (num_channels, num_trial_samples)
@@ -59,17 +66,21 @@ def positive_windows(
     rand: Random
 ) -> np.ndarray:
     assert conf.max_jitter >= 0
-    rand_onsets: List[int]
-    if conf.max_jitter == 0:
-        rand_onsets = marked.onsets
-    else:
-        rand_onsets = [rand.randint(o - conf.max_jitter, o + conf.max_jitter) for o in marked.onsets]
-    windows = []
-    for o in rand_onsets:
-        start = conf.start(o)
-        end = conf.end(o)
-        if start >= 0 and end < marked.eeg.shape[1]:
-            windows.append(marked.eeg[:, conf.start(o):conf.end(o)])
+    num_samps = marked.eeg.shape[1]
+    windows: List[np.ndarray] = []
+    for o in marked.onsets:
+        if is_valid_onset(o, num_samps, conf):
+            use_o: int
+            if conf.max_jitter == 0:
+                use_o = o
+            else:
+                while True:
+                    use_o = rand.randint(o - conf.max_jitter, o + conf.max_jitter)
+                    if is_valid_onset(use_o, num_samps, conf):
+                        break
+            start = conf.start(use_o)
+            end = conf.end(use_o)
+            windows.append(marked.eeg[:, start:end])
     return np.array(windows, dtype=marked.eeg.dtype)
 
 
@@ -88,21 +99,17 @@ def negative_windows(
     conf: WindowConfig,
     rand: Random
 ) -> np.ndarray:
-    rand_onsets: List[int] = []
     num_samps = marked.eeg.shape[1]
-    valid_onsets = 0
+    windows: List[np.ndarray] = []
     for o in marked.onsets:
-        start = conf.start(o)
-        end = conf.end(o)
-        if start >= 0 and end < marked.eeg.shape[1]:
-            valid_onsets += 1
-    while len(rand_onsets) < valid_onsets:
-        target = conf.random_onset(num_samps, rand)
-        if not conf.is_near_positive(target, marked.onsets):
-            rand_onsets.append(target)
-    windows = []
-    for o in rand_onsets:
-        windows.append(marked.eeg[:, conf.start(o):conf.end(o)])
+        if is_valid_onset(o, num_samps, conf):
+            while True:
+                target = conf.random_onset(num_samps, rand)
+                if not conf.is_near_positive(target, marked.onsets):
+                    start = conf.start(target)
+                    end = conf.end(target)
+                    windows.append(marked.eeg[:, start:end])
+                    break
     return np.array(windows, dtype=marked.eeg.dtype)
 
 
@@ -155,8 +162,8 @@ class Splitter:
         conf: WindowConfig,
         rand: Random
     ) -> pd.DataFrame:
-        pos_dfs = self._select(marked, role, conf, rand, positive_windows, True)
-        neg_dfs = self._select(marked, role, conf, rand, negative_windows, False)
+        pos_dfs = self._select(marked, role, conf, rand, positive_windows, 1)
+        neg_dfs = self._select(marked, role, conf, rand, negative_windows, 0)
         assert len(pos_dfs) == len(neg_dfs)
         return pd.concat((pos_dfs, neg_dfs), ignore_index=True)
 
@@ -167,7 +174,6 @@ class Splitter:
             max_index = df['window_index'].max()
             df['window_id'] = pd.Series(df['window_index'] + self._last_window_id, dtype=np.uint)
             self._last_window_id += max_index + 1
-            del df['window_index']
             mod_dfs.append(df)
         return pd.concat(mod_dfs, ignore_index=True)
 
@@ -178,26 +184,28 @@ class Splitter:
         conf: WindowConfig,
         rand: Random,
         windows: Any,
-        label: bool
+        label: int
     ) -> pd.DataFrame:
         raise NotImplementedError()
 
 
-# Generate a random permutation of range(100) to select fairly
-def generate_perm(rand: Random) -> List[int]:
+# Generate a random permutations of range(100) to select fairly per participant
+def generate_perms(parts: Set[str], rand: Random) -> Dict[str, List[int]]:
     if rand is None:
         rand = Random()
-    xs = list(range(100))
-    rand.shuffle(xs)
-    return xs
+    d = {}
+    for part in parts:
+        xs = list(range(100))
+        rand.shuffle(xs)
+        d[part] = xs
+    return d
 
 
 # Splits data randomly by role according to the percentage breakdown and permutation
 class RandomSplitter(Splitter):
-    def __init__(self, perm: List[int], pct: Dict[Role, int]):
+    def __init__(self, perms: Dict[str, List[int]], pct: Dict[Role, int]):
         super().__init__()
-        self._perm = perm
-        assert sorted(perm) == list(range(100))
+        self._perms = perms
         self._pct = pct
         total_pct = sum(pct.values())
         assert total_pct == 100
@@ -225,17 +233,21 @@ class RandomSplitter(Splitter):
         conf: WindowConfig,
         rand: Random,
         windows: Any,
-        label: bool
+        label: int
     ) -> pd.DataFrame:
         dfs = [project_df(k, windows(v, conf, rand)) for (k, v) in marked.items()]
         all_dfs = self._concat(dfs)
-        all_dfs['label'] = label
+        all_dfs['label'] = pd.Series(label, index=all_dfs.index, dtype=int)
         min_pct = self._min_pct(role)
         max_pct = self._max_pct(role)
-        ixs = [
-            i for i in range(len(all_dfs))
-            if self._perm[i % 100] >= min_pct and self._perm[i % 100] < max_pct
-        ]
+        ixs: List[Any] = []
+        for ix, row in all_dfs.iterrows():
+            p = self._perms[row['part']]
+            w = int(row['window_index'])
+            x = p[w % 100]
+            if x >= min_pct and x < max_pct:
+                ixs.append(ix)
+        del all_dfs['window_index']
         return all_dfs.iloc[ixs]
 
 
@@ -252,7 +264,7 @@ class PartSplitter(Splitter):
         conf: WindowConfig,
         rand: Random,
         windows: Any,
-        label: bool
+        label: int
     ) -> pd.DataFrame:
         parts = self._role_parts[role]
         dfs = [
@@ -260,5 +272,5 @@ class PartSplitter(Splitter):
             for (k, v) in marked.items() if k in parts
         ]
         all_dfs = self._concat(dfs)
-        all_dfs['label'] = label
+        all_dfs['label'] = pd.Series(label, index=all_dfs.index, dtype=int)
         return all_dfs

@@ -80,10 +80,14 @@ def cluster_channels(combined_chan_df: pd.DataFrame, n_clusters: int) -> pd.Data
     z = x.copy(deep=True)
     z.insert(0, 'cluster_id', pd.Series(cluster_ids, index=z.index, dtype=np.int_))
     # Sanity checks
-    # Assert there is a cluster entry for each participant
+    # Assert there is one and only one cluster entry for each participant
     for cluster_id in range(n_clusters):
+        # Assert that there are as many entries as participants
         y = z[z.cluster_id == cluster_id]
         assert len(y) == len(parts)
+        # And that there is exactly one per participant
+        w = sorted(y.part.unique().tolist())
+        assert w == parts
     return z
 
 

@@ -3,7 +3,7 @@ import pickle
 from typing import Any, Dict, List, Optional, Tuple
 from sklearn.naive_bayes import GaussianNB
 # from sklearn.svm import SVC
-from sklearn.ensemble import RandomForestClassifier
+# from sklearn.ensemble import RandomForestClassifier
 import biosignals.prepare as bp
 import biosignals.split as bs
 import numpy as np
@@ -112,12 +112,56 @@ def sk_load_single(loader: bp.FrameLoader) -> Tuple[List[str], str, pd.DataFrame
 
 
 # Load/transform features for multi-channel classification
-def sk_load_multi(loader: bp.FrameLoader, n_channels: int) -> Tuple[List[str], str, pd.DataFrame]:
+# Row-wise is a horrible way to do it but I don't know a way to do the groupby correctly.
+def sk_load_multi(loader: bp.FrameLoader, n_clusters: int) -> Tuple[List[str], str, pd.DataFrame]:
+    assert n_clusters > 0
     columns = list(SK_FEATURES)
-    columns.extend(['cluster_id', 'label'])
+    columns.extend(['cluster_id', 'window_id', 'part', 'label'])
     df = loader.load(columns)
-    # TODO filter clusters, generate feature columns etc
-    raise Exception('TODO')
+    # Find all unique (window_id, part) in the dataframe (bad way to do it)
+    part_windows: Dict[Tuple[int, str], int] = {}
+    for _, row in df.iterrows():
+        i = int(row['cluster_id'])
+        if i >= 0 and i < n_clusters:
+            p = row['part']
+            w = int(row['window_id'])
+            t = (w, p)
+            if t not in part_windows:
+                part_windows[t] = 0
+            part_windows[t] += 1
+    for t, n in part_windows.items():
+        assert n == n_clusters, f'not full cluster for {t}: {n} (expected {n_clusters})'
+    # Group and return the new df
+    pairs = [(k, i) for i in range(n_clusters) for k in SK_FEATURES]
+    new_feats = [f'{k}_{i}' for (k, i) in pairs]
+    new_cols: Dict[Tuple[str, int, int], Dict[str, float]] = {}
+    new_labels: Dict[Tuple[str, int, int], int] = {}
+    # Fill in all the features
+    for _, row in df.iterrows():
+        i = int(row['cluster_id'])
+        if i >= 0 and i < n_clusters:
+            p = row['part']
+            w = int(row['window_id'])
+            g = (p, i, w)
+            assert g not in new_cols
+            new_cols[g] = {k: row[k] for k in SK_FEATURES}
+            if i == 0:
+                assert g not in new_labels
+                new_labels[g] = int(row['label'])
+    conc_cols: Dict[str, List[Any]] = {f: [] for f in new_feats}
+    conc_labels: List[int] = []
+    for (w, p) in part_windows.keys():
+        for i in range(n_clusters):
+            g = (p, i, w)
+            for k in SK_FEATURES:
+                f = f'{k}_{i}'
+                conc_cols[f].append(new_cols[g][k])
+            if i == 0:
+                conc_labels.append(new_labels[g])
+    new_series = {f: pd.Series(conc_cols[f], dtype=float) for f in new_feats}
+    new_series['label'] = pd.Series(conc_labels, dtype=int)
+    new_df = pd.DataFrame.from_dict(new_series)
+    return (new_feats, 'label', new_df)
 
 
 # Split the given dataframe and shuffle the numpy arrays
@@ -145,13 +189,17 @@ class SkModel(Model):
     # NOTE(ejconlon) I don't have a good type for model
     # but it should be an sklearn model instance (i.e. has fit, predict)
     def __init__(self, model_class: Any, model_args: Dict[str, Any], strategy: Strategy):
-        assert strategy == Strategy.COMBINED, 'TODO support more strategies'
+        if strategy == Strategy.ENSEMBLE:
+            raise Exception('ensemble not supported in this implementation')
         self._model = model_class(**model_args)
         self._strategy = strategy
 
     def _load_one(self, ld: bp.FrameLoader, rand: Optional[RandomState]) -> Tuple[np.ndarray, np.ndarray]:
-        assert self._strategy == Strategy.COMBINED, 'TODO support more strategies'
-        return split_df(*sk_load_single(ld), rand=rand)
+        if self._strategy == Strategy.COMBINED:
+            return split_df(*sk_load_single(ld), rand=rand)
+        else:
+            assert self._strategy == Strategy.MULTI
+            return split_df(*sk_load_multi(ld, bp.NUM_CLUSTERS), rand=rand)
 
     def _load_all(self, lds: List[bp.FrameLoader], rand: Optional[RandomState]) -> Tuple[np.ndarray, np.ndarray]:
         xs = []
@@ -195,7 +243,9 @@ def test_models():
     rand = RandomState(42)
     skmodels = [
         (GaussianNB, {}, Strategy.COMBINED),
-        (RandomForestClassifier, {}, Strategy.COMBINED),
+        (GaussianNB, {}, Strategy.MULTI),
+        # (RandomForestClassifier, {}, Strategy.COMBINED),
+        # (RandomForestClassifier, {}, Strategy.MULTI),
         # (SVC, {'kernel': 'rbf'}, Strategy.COMBINED),
     ]
     for klass, args, strat in skmodels:
