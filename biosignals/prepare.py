@@ -222,3 +222,9 @@ def read_prepared(name: str) -> Dict[bs.Role, List[FrameLoader]]:
             for fn in fns if fn.startswith(r.pretty_name())
         ]
     return d
+
+
+# Check if there is prepared data under the given name
+def has_prepared(name: str) -> bool:
+    dest_dir = os.path.join(f'prepared/{name}')
+    return os.path.isdir(dest_dir)
