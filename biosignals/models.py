@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import pickle
 from typing import Any, Dict, List, Optional, Tuple
-from sklearn.naive_bayes import GaussianNB
+# from sklearn.naive_bayes import GaussianNB
 # from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 import biosignals.prepare as bp
@@ -242,8 +242,8 @@ class SkModel(Model):
 def test_models():
     rand = RandomState(42)
     skmodels = [
-        (GaussianNB, {}, Strategy.COMBINED),
-        (GaussianNB, {}, Strategy.MULTI),
+        # (GaussianNB, {}, Strategy.COMBINED),
+        # (GaussianNB, {}, Strategy.MULTI),
         (RandomForestClassifier, {}, Strategy.COMBINED),
         (RandomForestClassifier, {}, Strategy.MULTI),
         # (SVC, {'kernel': 'rbf'}, Strategy.COMBINED),

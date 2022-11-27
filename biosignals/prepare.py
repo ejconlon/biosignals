@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import shutil
 from typing import Dict, List, Optional
 import biosignals.dataset as bd
@@ -20,7 +20,7 @@ NUM_CLUSTERS = 32
 DEFAULT_WINDOW_CONFIG = bs.WindowConfig(
     pre_len=500,
     post_len=250,
-    max_jitter=50,
+    max_jitter=0,
     exclude_len=500
 )
 
@@ -178,6 +178,30 @@ def prepare_rand():
         spec={
             bs.Role.TRAIN: 1,
             bs.Role.VALIDATE: 1,
+            bs.Role.TEST: 1
+        }
+    )
+
+
+# Prepare a jittered set to pump up the training examples
+def prepare_jit():
+    rand = Random(42)
+    conf = replace(DEFAULT_WINDOW_CONFIG, max_jitter=50)
+    perms = bs.generate_perms(bd.PARTICIPANTS, rand)
+    splitter = bs.RandomSplitter(
+        perms, {bs.Role.TRAIN: 80, bs.Role.VALIDATE: 0, bs.Role.TEST: 20})
+    extractors = default_extractors()
+
+    prepare_splits(
+        name='jit',
+        conf=conf,
+        rand=rand,
+        splitter=splitter,
+        extractors=extractors,
+        scaler_types=SCALER_TYPES,
+        spec={
+            bs.Role.TRAIN: 2,
+            bs.Role.VALIDATE: 0,
             bs.Role.TEST: 1
         }
     )
