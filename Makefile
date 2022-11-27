@@ -56,6 +56,7 @@ repl:
 .PHONY: clean-docs
 clean-docs:
 	rm -f docs/*.{aux,bbl,blg,fdb_latexmk,fls,log,nav,out,pdf,snm,synctex.gz,toc}
+	rm -rf docs/_minted-*
 
 # Build the latex report
 .PHONY: report
