@@ -52,3 +52,30 @@ download:
 repl:
 	.venv/bin/ipython
 
+# Clean any junk left by latex
+.PHONY: clean-docs
+clean-docs:
+	rm -f docs/*.{aux,bbl,blg,fdb_latexmk,fls,log,nav,out,pdf,snm,synctex.gz,toc}
+
+# Build the latex report
+.PHONY: report
+report:
+	cd docs && latexmk -pdf -pdflatex="pdflatex -shell-escape -interaction=nonstopmode" -use-make ./biosignals-report.tex
+
+# Build the latex presentation
+.PHONY: presentation
+presentation:
+	cd docs && latexmk -pdf -pdflatex="pdflatex -shell-escape -interaction=nonstopmode" -use-make ./biosignals-presentation.tex
+
+# Clean and build the latex report
+# For some reason having these as make deps is racy. Just run them in sequence.
+.PHONY: full-report
+full-report:
+	$(MAKE) clean-docs
+	$(MAKE) report
+
+# Clean and build the latex presentation
+.PHONY: full-presentation
+full-presentation:
+	$(MAKE) clean-docs
+	$(MAKE) presentation

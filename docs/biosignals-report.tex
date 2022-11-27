@@ -1,0 +1,58 @@
+\documentclass[format=acmsmall, nonacm=true, review=true, screen=true]{acmart}
+
+\usepackage[utf8]{inputenc}
+\usepackage{xcolor}
+\usepackage{fancyvrb}
+\usepackage{minted}
+\usepackage{xspace}
+\usepackage{hyperref}
+
+% Use this instead of caption to remove acmart description warnings
+\newcommand{\mycaption}[1]{\Description{#1}\caption{#1}}
+
+% Project name
+% \newcommand{\biosignals}{\textit{Biosignals}\xspace}
+
+% For highlighting some texts
+% \newcommand{\red}[1]{\textcolor{red}{#1}}
+
+% This appears to fix some font problem...
+\DeclareRobustCommand{\ttfamily}{\fontencoding{T1}\fontfamily{lmtt}\selectfont}
+
+% Junk for acmart:
+\setcopyright{acmcopyright}
+\copyrightyear{2022}
+\acmYear{2022}
+\acmDOI{N/A}
+\acmBooktitle{N/A}
+
+\title{Title here}
+\subtitle{Subtitle here}
+\author{Jennie Chen}
+\author{Kevin Jin}
+\author{Eric Conlon}
+\authorsaddresses{}
+\date{2022-12-xx}
+
+\begin{document}
+
+\begin{abstract}
+
+Abstract ...
+
+\end{abstract}
+
+\maketitle
+
+\section{Introduction}
+
+Introduction...
+
+\section{Conclusion}
+
+Conclusion...
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{biosignals-report}
+
+\end{document}
