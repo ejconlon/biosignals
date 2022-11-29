@@ -37,15 +37,8 @@ class SequentialModel(bm.FeatureModel):
         self._model = Sequential()
         self._model_class = model_class
 
-    def test_one(self, x: np.ndarray, y_true: np.ndarray) -> be.Results:
-        x_tf = tf.convert_to_tensor(x, dtype=tf.float64)
-        x_tf = tf.expand_dims(x_tf, axis=1)
-        # y_true_tf = tf.convert_to_tensor(y_true, dtype=tf.int32)
-        y_pred_tf = self._model.predict(x_tf)
-        y_pred = tf.squeeze(y_pred_tf, axis=1).numpy()
-        return be.Results(y_true=y_true, y_pred=y_pred)
-
-    def train_one(self, x: np.ndarray, y_true: np.ndarray) -> be.Results:
+    # Takes x - normal features, w - eeg features, y - label
+    def train_one(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
         x_tf = tf.convert_to_tensor(x, dtype=tf.float64)
         x_tf = tf.expand_dims(x_tf, axis=1)
         y_true_tf = tf.convert_to_tensor(y_true, dtype=tf.int32)
@@ -75,6 +68,15 @@ class SequentialModel(bm.FeatureModel):
         y_pred = tf.squeeze(y_pred_tf, axis=1).numpy()
         return be.Results(y_true=y_true, y_pred=y_pred)
 
+    # Takes x - normal features, w - eeg features, y - label
+    def test_one(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
+        x_tf = tf.convert_to_tensor(x, dtype=tf.float64)
+        x_tf = tf.expand_dims(x_tf, axis=1)
+        # y_true_tf = tf.convert_to_tensor(y_true, dtype=tf.int32)
+        y_pred_tf = self._model.predict(x_tf)
+        y_pred = tf.squeeze(y_pred_tf, axis=1).numpy()
+        return be.Results(y_true=y_true, y_pred=y_pred)
+
 
 # Test training with some deep learning models
 def test_models():
@@ -85,17 +87,17 @@ def test_models():
     seq_config = SequentialConfig()
     deepmodels = [
         (LSTM, {}, multi_config, seq_config),
-        (LSTM, {}, multi_pca_config, seq_config),
+        # (LSTM, {}, multi_pca_config, seq_config),
         (GRU, {}, multi_config, seq_config),
-        (GRU, {}, multi_pca_config, seq_config),
+        # (GRU, {}, multi_pca_config, seq_config),
     ]
     for klass, args, feat_config, seq_config in deepmodels:
         print(f'Training model {klass} {args} {feat_config} {seq_config}')
         model = SequentialModel(klass, args, feat_config, seq_config)
         train_res, test_res = model.execute('rand', rand)
-        print(train_res)
+        # print(train_res)
         print('train accuracy', train_res.accuracy())
-        print(test_res)
+        # print(test_res)
         print('test accuracy', test_res.accuracy())
-        be.plot_results('train', train_res)
-        be.plot_results('test', test_res)
+        # be.plot_results('train', train_res)
+        # be.plot_results('test', test_res)
