@@ -1,9 +1,9 @@
-from typing import Any, Callable, List
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List
 import numpy as np
 import pandas as pd
 import scipy.signal as ss
 import scipy.integrate as si
-import functools
 from biosignals.dataset import EEG_SAMPLE_RATE
 
 # Feature extraction
@@ -34,18 +34,35 @@ class ArrayExtractor(Extractor):
         df.insert(0, self._name, series)
 
 
+@dataclass(frozen=True)
+class Band:
+    name: str
+    freq_low: float
+    freq_high: float
+
+
 # Compute the average power in the frequency band
 # From: https://stackoverflow.com/questions/44547669/python-numpy-equivalent-of-bandpower-from-matlab
-def bandpower(freq_low: float, freq_high: float, eeg: np.ndarray) -> float:
-    f, Pxx = ss.periodogram(eeg, fs=EEG_SAMPLE_RATE)
-    ind_min = int(np.argmax(f > freq_low) - 1)
-    ind_max = int(np.argmax(f > freq_high) - 1)
-    return si.trapz(Pxx[ind_min:ind_max], f[ind_min:ind_max])
+class BandPowerExtractor(Extractor):
+    def __init__(self, bands: List[Band]):
+        self._bands = bands
 
+    def _power(self, f: np.ndarray, Pxx: np.ndarray, freq_low: float, freq_high: float) -> float:
+        ind_min = int(np.argmax(f > freq_low) - 1)
+        ind_max = int(np.argmax(f > freq_high) - 1)
+        return si.trapz(Pxx[ind_min:ind_max], f[ind_min:ind_max])
 
-def band_power_extractor(name: str, freq_low: float, freq_high: float) -> Extractor:
-    fn = functools.partial(bandpower, freq_low, freq_high)
-    return ArrayExtractor(name, fn, np.float64)
+    def extract(self, df: pd.DataFrame):
+        values: Dict[str, List[float]] = {b.name: [] for b in self._bands}
+        for _, row in df.iterrows():
+            eeg = row['eeg']
+            f, Pxx = ss.periodogram(eeg, fs=EEG_SAMPLE_RATE)
+            for b in self._bands:
+                power = self._power(f, Pxx, b.freq_low, b.freq_high)
+                values[b.name].append(power)
+        for name, vals in values.items():
+            series = pd.Series(vals, dtype=float)
+            df.insert(0, name, series)
 
 
 # Extracts features from the given windows

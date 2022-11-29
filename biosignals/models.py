@@ -218,7 +218,9 @@ class SkModel(Model):
 
     def _test_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
         y_pred = self._model.predict(x)
-        be.evaluate_model(y_pred, y_true)
+        # NOTE: Don't want to pop up window when running on command line!
+        # Need to return something and evaluate it later.
+        # be.evaluate_model(y_pred, y_true)
         return Results.from_pred(y_true, y_pred)
 
     def train_all(

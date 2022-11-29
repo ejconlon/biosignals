@@ -27,15 +27,15 @@ DEFAULT_WINDOW_CONFIG = bs.WindowConfig(
 
 # This comes from https://mne.tools/dev/auto_examples/time_frequency/time_frequency_global_field_power.html
 FREQ_BANDS = [
-    ('theta_power', 4, 7),
-    ('alpha_power', 8, 12),
-    ('beta_power', 13, 25),
-    ('gamma_power', 30, 45)
+    bf.Band('theta_power', 4, 7),
+    bf.Band('alpha_power', 8, 12),
+    bf.Band('beta_power', 13, 25),
+    bf.Band('gamma_power', 30, 45)
 ]
 
 
 # Feature extractors for band power
-FREQ_EXTRACTORS = [bf.band_power_extractor(name, lo, hi) for (name, lo, hi) in FREQ_BANDS]
+FREQ_EXTRACTORS = [bf.BandPowerExtractor(FREQ_BANDS)]
 
 
 # Feature extractors to use by default
