@@ -6,11 +6,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
+import biosignals.evaluation as be
 import biosignals.prepare as bp
 import biosignals.split as bs
 import numpy as np
 import pandas as pd
-from sklearn.metrics import confusion_matrix
 from sklearn.utils import shuffle
 from numpy.random import RandomState
 from enum import Enum
@@ -131,38 +131,6 @@ class Strategy(Enum):
     # ENSEMBLE = 2
 
 
-# Results (true/false negatives/positives)
-@dataclass(frozen=True)
-class Results:
-    tn: int
-    fp: int
-    fn: int
-    tp: int
-
-    @property
-    def size(self) -> int:
-        return self.tn + self.fp + self.fn + self.tp
-
-    @property
-    def accuracy(self) -> float:
-        return float(self.tn + self.tp) / self.size
-
-    @classmethod
-    def from_pred(cls, y_true: np.ndarray, y_pred: np.ndarray) -> 'Results':
-        assert y_pred.shape == y_true.shape
-        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-        assert tn + fp + fn + tp == y_true.shape[0]
-        return cls(tn=tn, fp=fp, fn=fn, tp=tp)
-
-    def __add__(self, other: 'Results') -> 'Results':
-        return Results(
-            tn=self.tn + other.tn,
-            fp=self.fp + other.fp,
-            fn=self.fn + other.fn,
-            tp=self.tp + other.tp,
-        )
-
-
 # Abstract definition for a model
 class Model:
     # Train on all train/validate datasets
@@ -172,15 +140,15 @@ class Model:
         train_loaders: List[bp.FrameLoader],
         validate_loaders: List[bp.FrameLoader],
         rand: Optional[RandomState]
-    ) -> Results:
+    ) -> be.Results:
         raise NotImplementedError()
 
     # Test on all test datasets
-    def test_all(self, test_loaders: List[bp.FrameLoader]) -> Results:
+    def test_all(self, test_loaders: List[bp.FrameLoader]) -> be.Results:
         raise NotImplementedError()
 
     # Shorthand for training and testing on a prepared set
-    def execute(self, prep_name: str, rand: Optional[RandomState]) -> Tuple[Results, Results]:
+    def execute(self, prep_name: str, rand: Optional[RandomState]) -> Tuple[be.Results, be.Results]:
         lds = bp.read_prepared(prep_name)
         train_res = self.train_all(lds[bs.Role.TRAIN], lds[bs.Role.VALIDATE], rand)
         test_res = self.test_all(lds[bs.Role.TEST])
@@ -213,11 +181,11 @@ class FeatureConfig:
 
 # A model that does some basic feature loading and preprocessing
 class FeatureModel(Model):
-    def __init__(self, config: FeatureConfig):
-        assert config.strategy == Strategy.COMBINED or config.strategy == Strategy.MULTI
-        self._config = config
+    def __init__(self, feat_config: FeatureConfig):
+        assert feat_config.strategy == Strategy.COMBINED or feat_config.strategy == Strategy.MULTI
+        self._feat_config = feat_config
         self._scaler = StandardScaler()
-        self._pca = PCA(n_components=config.pca_components)
+        self._pca = PCA(n_components=feat_config.pca_components)
 
     # Load raw features
     def _load_raw(
@@ -225,15 +193,15 @@ class FeatureModel(Model):
         ld: bp.FrameLoader,
         rand: Optional[RandomState]
     ) -> Tuple[np.ndarray, np.ndarray]:
-        if self._config.strategy == Strategy.COMBINED:
+        if self._feat_config.strategy == Strategy.COMBINED:
             return split_df(
-                *load_single_features(ld, extras=self._config.extras),
+                *load_single_features(ld, extras=self._feat_config.extras),
                 rand=rand
             )
         else:
-            assert self._config.strategy == Strategy.MULTI
+            assert self._feat_config.strategy == Strategy.MULTI
             return split_df(
-                *load_multi_features(ld, bp.NUM_CLUSTERS, extras=self._config.extras),
+                *load_multi_features(ld, bp.NUM_CLUSTERS, extras=self._feat_config.extras),
                 rand=rand
             )
 
@@ -256,7 +224,7 @@ class FeatureModel(Model):
             x = self._scaler.fit_transform(x)
         else:
             x = self._scaler.transform(x)
-        if self._config.use_pca:
+        if self._feat_config.use_pca:
             if is_train:
                 x = self._pca.fit_transform(x)
             else:
@@ -264,11 +232,11 @@ class FeatureModel(Model):
         return (x, y)
 
     # Implement this for training
-    def train_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
+    def train_one(self, x: np.ndarray, y_true: np.ndarray) -> be.Results:
         raise NotImplementedError()
 
     # Implement this for testing
-    def test_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
+    def test_one(self, x: np.ndarray, y_true: np.ndarray) -> be.Results:
         raise NotImplementedError()
 
     def train_all(
@@ -276,13 +244,13 @@ class FeatureModel(Model):
         train_loaders: List[bp.FrameLoader],
         validate_loaders: List[bp.FrameLoader],
         rand: Optional[RandomState]
-    ) -> Results:
+    ) -> be.Results:
         # Very few models are incremental, so we have to fit all at once,
         # which means we have to load and concat all training data now.
         x, y = self._load_proc(train_loaders, rand, is_train=True)
         return self.train_one(x, y)
 
-    def test_all(self, test_loaders: List[bp.FrameLoader]) -> Results:
+    def test_all(self, test_loaders: List[bp.FrameLoader]) -> be.Results:
         x, y = self._load_proc(test_loaders, None, is_train=False)
         return self.test_one(x, y)
 
@@ -291,21 +259,22 @@ class FeatureModel(Model):
 class SkModel(FeatureModel):
     # NOTE(ejconlon) I don't have a good type for model
     # but it should be an sklearn model instance (i.e. has fit, predict)
-    def __init__(self, model_class: Any, model_args: Dict[str, Any], config: FeatureConfig):
-        super().__init__(config)
+    def __init__(self, model_class: Any, model_args: Dict[str, Any], feat_config: FeatureConfig):
+        super().__init__(feat_config)
         self._model = model_class(**model_args)
 
-    def train_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
+    def train_one(self, x: np.ndarray, y_true: np.ndarray) -> be.Results:
         self._model.fit(x, y_true)
         return self.test_one(x, y_true)
 
-    def test_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
+    def test_one(self, x: np.ndarray, y_true: np.ndarray) -> be.Results:
         y_pred = self._model.predict(x)
-        return Results.from_pred(y_true, y_pred)
+        return be.Results(y_true=y_true, y_pred=y_pred)
 
 
 # Test training with some sklearn models
 def test_models():
+    bp.ensure_rand()
     rand = RandomState(42)
     combined_config = FeatureConfig(Strategy.COMBINED)
     multi_config = FeatureConfig(Strategy.MULTI)
@@ -318,9 +287,13 @@ def test_models():
         (RandomForestClassifier, {}, multi_pca_config),
         # (SVC, {'kernel': 'rbf'}, Strategy.COMBINED),
     ]
-    for klass, args, strat in skmodels:
-        print(f'Training model {klass} {args} {strat}')
-        model = SkModel(klass, args, strat)
-        _, tres = model.execute('rand', rand)
-        print(tres)
-        print('accuracy', tres.accuracy)
+    for klass, args, feat_config in skmodels:
+        print(f'Training model {klass} {args} {feat_config}')
+        model = SkModel(klass, args, feat_config)
+        train_res, test_res = model.execute('rand', rand)
+        print(train_res)
+        print('train accuracy', train_res.accuracy())
+        print(test_res)
+        print('test accuracy', test_res.accuracy())
+        # be.plot_results('train', train_res)
+        # be.plot_results('test', test_res)

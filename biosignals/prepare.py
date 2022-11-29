@@ -159,6 +159,12 @@ def prepare_rand():
     )
 
 
+# Ensure that the rand dataset exists
+def ensure_rand():
+    if not has_prepared('rand'):
+        prepare_rand()
+
+
 # Prepare a jittered set to pump up the training examples
 def prepare_jit():
     rand = Random(42)
