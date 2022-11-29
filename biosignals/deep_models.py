@@ -2,7 +2,7 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM, GRU, Activation  # Dropout, BatchNormalization
 from typing import Any, Dict, List, Optional, Tuple
-from biosignals.models import Strategy, Model, Results, split_df, sk_load_single, sk_load_multi
+from biosignals.models import Strategy, Model, Results, split_df, load_single_features, load_multi_features
 from numpy.random import RandomState
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -24,8 +24,7 @@ import tensorflow as tf
 class SequentialModel(Model):
 
     def __init__(self, model_class: Any, model_args: Dict[str, Any], strategy: Strategy):
-        if strategy == Strategy.ENSEMBLE:
-            raise Exception('ensemble not supported in this implementation')
+        assert strategy == Strategy.COMBINED or strategy == Strategy.MULTI
         self._usePCA = model_args.get("usePCA", None)
         self._model = Sequential()
         self._scaler = StandardScaler()
@@ -35,10 +34,10 @@ class SequentialModel(Model):
 
     def _load_one(self, ld: bp.FrameLoader, rand: Optional[RandomState]) -> Tuple[np.ndarray, np.ndarray]:
         if self._strategy == Strategy.COMBINED:
-            return split_df(*sk_load_single(ld), rand=rand)
+            return split_df(*load_single_features(ld), rand=rand)
         else:
             assert self._strategy == Strategy.MULTI
-            return split_df(*sk_load_multi(ld, bp.NUM_CLUSTERS), rand=rand)
+            return split_df(*load_multi_features(ld, bp.NUM_CLUSTERS), rand=rand)
 
     def _load_all(self, lds: List[bp.FrameLoader],
                   isTraining: bool,
@@ -129,16 +128,16 @@ def LSTM_Model(train_data, train_labels, num_epochs=10, batch_size=64, verbose=1
     return model
 
 
-# Test training with some sklearn models
+# Test training with some deep learning models
 def test_models():
     rand = RandomState(42)
-    skmodels = [
+    deepmodels = [
         (LSTM, {"usePCA": False}, Strategy.MULTI),
         (LSTM, {"usePCA": True}, Strategy.MULTI),
         (GRU, {"usePCA": False}, Strategy.MULTI),
         (GRU, {"usePCA": True}, Strategy.MULTI),
     ]
-    for klass, args, strat in skmodels:
+    for klass, args, strat in deepmodels:
         print(f'Training model {klass} {args} {strat}')
         model = SequentialModel(klass, args, strat)
         _, tres = model.execute('rand', rand)

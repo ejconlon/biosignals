@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from sklearn.ensemble import RandomForestClassifier
 import biosignals.prepare as bp
 import biosignals.split as bs
-import biosignals.evaluation as be
 import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix
@@ -28,7 +27,7 @@ class Strategy(Enum):
     # Train one classifier for each channel and vote on the
     # final prediction (1-channel-at-a-time samples, N classifiers)
     # (This removes unclustered channel info)
-    ENSEMBLE = 2
+    # ENSEMBLE = 2
 
 
 # Results (true/false negatives/positives)
@@ -105,19 +104,30 @@ SK_FEATURES = [
 
 
 # Load/transform features for single-channel classification
-def sk_load_single(loader: bp.FrameLoader) -> Tuple[List[str], str, pd.DataFrame]:
+def load_single_features(
+    loader: bp.FrameLoader,
+    extras: Optional[List[str]] = None
+) -> Tuple[List[str], str, pd.DataFrame]:
     columns = list(SK_FEATURES)
     columns.extend(['label'])
+    if extras is not None:
+        columns.extend(extras)
     df = loader.load(columns)
     return (SK_FEATURES, 'label', df)
 
 
 # Load/transform features for multi-channel classification
 # Row-wise is a horrible way to do it but I don't know a way to do the groupby correctly.
-def sk_load_multi(loader: bp.FrameLoader, n_clusters: int) -> Tuple[List[str], str, pd.DataFrame]:
+def load_multi_features(
+    loader: bp.FrameLoader,
+    n_clusters: int,
+    extras: Optional[List[str]] = None
+) -> Tuple[List[str], str, pd.DataFrame]:
     assert n_clusters > 0
     columns = list(SK_FEATURES)
     columns.extend(['cluster_id', 'window_id', 'part', 'label'])
+    if extras is not None:
+        columns.extend(extras)
     df = loader.load(columns)
     # Find all unique (window_id, part) in the dataframe (bad way to do it)
     part_windows: Dict[Tuple[int, str], int] = {}
@@ -190,17 +200,16 @@ class SkModel(Model):
     # NOTE(ejconlon) I don't have a good type for model
     # but it should be an sklearn model instance (i.e. has fit, predict)
     def __init__(self, model_class: Any, model_args: Dict[str, Any], strategy: Strategy):
-        if strategy == Strategy.ENSEMBLE:
-            raise Exception('ensemble not supported in this implementation')
+        assert strategy == Strategy.COMBINED or strategy == Strategy.MULTI
         self._model = model_class(**model_args)
         self._strategy = strategy
 
     def _load_one(self, ld: bp.FrameLoader, rand: Optional[RandomState]) -> Tuple[np.ndarray, np.ndarray]:
         if self._strategy == Strategy.COMBINED:
-            return split_df(*sk_load_single(ld), rand=rand)
+            return split_df(*load_single_features(ld), rand=rand)
         else:
             assert self._strategy == Strategy.MULTI
-            return split_df(*sk_load_multi(ld, bp.NUM_CLUSTERS), rand=rand)
+            return split_df(*load_multi_features(ld, bp.NUM_CLUSTERS), rand=rand)
 
     def _load_all(self, lds: List[bp.FrameLoader], rand: Optional[RandomState]) -> Tuple[np.ndarray, np.ndarray]:
         xs = []
