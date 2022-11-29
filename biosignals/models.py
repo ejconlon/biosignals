@@ -1,8 +1,10 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import pickle
 from typing import Any, Dict, List, Optional, Tuple
 # from sklearn.naive_bayes import GaussianNB
 # from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
 import biosignals.prepare as bp
 import biosignals.split as bs
@@ -12,89 +14,6 @@ from sklearn.metrics import confusion_matrix
 from sklearn.utils import shuffle
 from numpy.random import RandomState
 from enum import Enum
-
-
-# Classification strategy
-class Strategy(Enum):
-    # Ignore channel ids and train/predict based on observing
-    # and one channel. (1-channel-at-a-time samples, 1 classifier)
-    # (This keeps unclustered channel info)
-    COMBINED = 0
-    # Use clustering to order channels and train/predict based
-    # on observing all channels. (N-channel-at-a-time samples, 1 classifier)
-    # (This removes unclustered channel info)
-    MULTI = 1
-    # Train one classifier for each channel and vote on the
-    # final prediction (1-channel-at-a-time samples, N classifiers)
-    # (This removes unclustered channel info)
-    # ENSEMBLE = 2
-
-
-# Results (true/false negatives/positives)
-@dataclass(frozen=True)
-class Results:
-    tn: int
-    fp: int
-    fn: int
-    tp: int
-
-    @property
-    def size(self) -> int:
-        return self.tn + self.fp + self.fn + self.tp
-
-    @property
-    def accuracy(self) -> float:
-        return float(self.tn + self.tp) / self.size
-
-    @classmethod
-    def from_pred(cls, y_true: np.ndarray, y_pred: np.ndarray) -> 'Results':
-        assert y_pred.shape == y_true.shape
-        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-        assert tn + fp + fn + tp == y_true.shape[0]
-        return cls(tn=tn, fp=fp, fn=fn, tp=tp)
-
-    def __add__(self, other: 'Results') -> 'Results':
-        return Results(
-            tn=self.tn + other.tn,
-            fp=self.fp + other.fp,
-            fn=self.fn + other.fn,
-            tp=self.tp + other.tp,
-        )
-
-
-# Abstract definition for a model
-class Model:
-    # Train on all train/validate datasets
-    # Return final results for training set
-    def train_all(
-        self,
-        train_loaders: List[bp.FrameLoader],
-        validate_loaders: List[bp.FrameLoader],
-        rand: Optional[RandomState]
-    ) -> Results:
-        raise NotImplementedError()
-
-    # Test on all test datasets
-    def test_all(self, test_loaders: List[bp.FrameLoader]) -> Results:
-        raise NotImplementedError()
-
-    # Shorthand for training and testing on a prepared set
-    def execute(self, prep_name: str, rand: Optional[RandomState]) -> Tuple[Results, Results]:
-        lds = bp.read_prepared(prep_name)
-        train_res = self.train_all(lds[bs.Role.TRAIN], lds[bs.Role.VALIDATE], rand)
-        test_res = self.test_all(lds[bs.Role.TEST])
-        return (train_res, test_res)
-
-    # Save model to the given path
-    def save(self, path: str):
-        with open(path, 'wb') as f:
-            pickle.dump(self, f)
-
-    # Load model from the given path
-    @classmethod
-    def load(cls, path: str) -> 'Model':
-        with open(path, 'rb') as f:
-            return pickle.load(f)
 
 
 SK_FEATURES = [
@@ -196,42 +115,161 @@ def split_df(
         return (x_shuf, y_shuf)
 
 
-# An sklearn model
-class SkModel(Model):
-    # NOTE(ejconlon) I don't have a good type for model
-    # but it should be an sklearn model instance (i.e. has fit, predict)
-    def __init__(self, model_class: Any, model_args: Dict[str, Any], strategy: Strategy):
-        assert strategy == Strategy.COMBINED or strategy == Strategy.MULTI
-        self._model = model_class(**model_args)
-        self._strategy = strategy
+# Classification strategy
+class Strategy(Enum):
+    # Ignore channel ids and train/predict based on observing
+    # and one channel. (1-channel-at-a-time samples, 1 classifier)
+    # (This keeps unclustered channel info)
+    COMBINED = 0
+    # Use clustering to order channels and train/predict based
+    # on observing all channels. (N-channel-at-a-time samples, 1 classifier)
+    # (This removes unclustered channel info)
+    MULTI = 1
+    # Train one classifier for each channel and vote on the
+    # final prediction (1-channel-at-a-time samples, N classifiers)
+    # (This removes unclustered channel info)
+    # ENSEMBLE = 2
 
-    def _load_one(self, ld: bp.FrameLoader, rand: Optional[RandomState]) -> Tuple[np.ndarray, np.ndarray]:
-        if self._strategy == Strategy.COMBINED:
-            return split_df(*load_single_features(ld), rand=rand)
+
+# Results (true/false negatives/positives)
+@dataclass(frozen=True)
+class Results:
+    tn: int
+    fp: int
+    fn: int
+    tp: int
+
+    @property
+    def size(self) -> int:
+        return self.tn + self.fp + self.fn + self.tp
+
+    @property
+    def accuracy(self) -> float:
+        return float(self.tn + self.tp) / self.size
+
+    @classmethod
+    def from_pred(cls, y_true: np.ndarray, y_pred: np.ndarray) -> 'Results':
+        assert y_pred.shape == y_true.shape
+        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+        assert tn + fp + fn + tp == y_true.shape[0]
+        return cls(tn=tn, fp=fp, fn=fn, tp=tp)
+
+    def __add__(self, other: 'Results') -> 'Results':
+        return Results(
+            tn=self.tn + other.tn,
+            fp=self.fp + other.fp,
+            fn=self.fn + other.fn,
+            tp=self.tp + other.tp,
+        )
+
+
+# Abstract definition for a model
+class Model:
+    # Train on all train/validate datasets
+    # Return final results for training set
+    def train_all(
+        self,
+        train_loaders: List[bp.FrameLoader],
+        validate_loaders: List[bp.FrameLoader],
+        rand: Optional[RandomState]
+    ) -> Results:
+        raise NotImplementedError()
+
+    # Test on all test datasets
+    def test_all(self, test_loaders: List[bp.FrameLoader]) -> Results:
+        raise NotImplementedError()
+
+    # Shorthand for training and testing on a prepared set
+    def execute(self, prep_name: str, rand: Optional[RandomState]) -> Tuple[Results, Results]:
+        lds = bp.read_prepared(prep_name)
+        train_res = self.train_all(lds[bs.Role.TRAIN], lds[bs.Role.VALIDATE], rand)
+        test_res = self.test_all(lds[bs.Role.TEST])
+        return (train_res, test_res)
+
+    # Save model to the given path
+    def save(self, path: str):
+        with open(path, 'wb') as f:
+            pickle.dump(self, f)
+
+    # Load model from the given path
+    @classmethod
+    def load(cls, path: str) -> 'Model':
+        with open(path, 'rb') as f:
+            return pickle.load(f)
+
+
+# Various options to control feature loading
+@dataclass(frozen=True)
+class FeatureConfig:
+    # Single or multi channel features
+    strategy: Strategy
+    # Use PCA for feature preprocessing?
+    use_pca: bool = False
+    # If using PCA, how many components
+    pca_components: int = 64
+    # Any extra feature columns
+    extras: Optional[List[str]] = None
+
+
+# A model that does some basic feature loading and preprocessing
+class FeatureModel(Model):
+    def __init__(self, config: FeatureConfig):
+        assert config.strategy == Strategy.COMBINED or config.strategy == Strategy.MULTI
+        self._config = config
+        self._scaler = StandardScaler()
+        self._pca = PCA(n_components=config.pca_components)
+
+    # Load raw features
+    def _load_raw(
+        self,
+        ld: bp.FrameLoader,
+        rand: Optional[RandomState]
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        if self._config.strategy == Strategy.COMBINED:
+            return split_df(
+                *load_single_features(ld, extras=self._config.extras),
+                rand=rand
+            )
         else:
-            assert self._strategy == Strategy.MULTI
-            return split_df(*load_multi_features(ld, bp.NUM_CLUSTERS), rand=rand)
+            assert self._config.strategy == Strategy.MULTI
+            return split_df(
+                *load_multi_features(ld, bp.NUM_CLUSTERS, extras=self._config.extras),
+                rand=rand
+            )
 
-    def _load_all(self, lds: List[bp.FrameLoader], rand: Optional[RandomState]) -> Tuple[np.ndarray, np.ndarray]:
+    # Load processed features
+    def _load_proc(
+        self,
+        lds: List[bp.FrameLoader],
+        rand: Optional[RandomState],
+        is_train: bool
+    ) -> Tuple[np.ndarray, np.ndarray]:
         xs = []
         ys = []
         for ld in lds:
-            x, y = self._load_one(ld, rand)
+            x, y = self._load_raw(ld, rand)
             xs.append(x)
             ys.append(y)
         x = np.concatenate(xs)
         y = np.concatenate(ys)
+        if is_train:
+            x = self._scaler.fit_transform(x)
+        else:
+            x = self._scaler.transform(x)
+        if self._config.use_pca:
+            if is_train:
+                x = self._pca.fit_transform(x)
+            else:
+                x = self._pca.transform(x)
         return (x, y)
 
-    def _train_one(self, x: np.ndarray, y_true: np.ndarray):
-        self._model.fit(x, y_true)
+    # Implement this for training
+    def train_one(self, x: np.ndarray, y_true: np.ndarray):
+        raise NotImplementedError()
 
-    def _test_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
-        y_pred = self._model.predict(x)
-        # NOTE: Don't want to pop up window when running on command line!
-        # Need to return something and evaluate it later.
-        # be.evaluate_model(y_pred, y_true)
-        return Results.from_pred(y_true, y_pred)
+    # Implement this for testing
+    def test_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
+        raise NotImplementedError()
 
     def train_all(
         self,
@@ -241,25 +279,48 @@ class SkModel(Model):
     ) -> Results:
         # Very few models are incremental, so we have to fit all at once,
         # which means we have to load and concat all training data now.
-        x, y = self._load_all(train_loaders, rand)
+        x, y = self._load_proc(train_loaders, rand, is_train=True)
         # Not every model has fit_predict, so we have to fit and predict
         # separately if we want to see perf on the training set.
-        self._train_one(x, y)
-        return self._test_one(x, y)
+        self.train_one(x, y)
+        return self.test_one(x, y)
 
     def test_all(self, test_loaders: List[bp.FrameLoader]) -> Results:
-        x, y = self._load_all(test_loaders, None)
-        return self._test_one(x, y)
+        x, y = self._load_proc(test_loaders, None, is_train=False)
+        return self.test_one(x, y)
+
+
+# An sklearn model
+class SkModel(FeatureModel):
+    # NOTE(ejconlon) I don't have a good type for model
+    # but it should be an sklearn model instance (i.e. has fit, predict)
+    def __init__(self, model_class: Any, model_args: Dict[str, Any], config: FeatureConfig):
+        super().__init__(config)
+        self._model = model_class(**model_args)
+
+    def train_one(self, x: np.ndarray, y_true: np.ndarray):
+        self._model.fit(x, y_true)
+
+    def test_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
+        y_pred = self._model.predict(x)
+        # NOTE: Don't want to pop up window when running on command line!
+        # Need to return something and evaluate it later.
+        # be.evaluate_model(y_pred, y_true)
+        return Results.from_pred(y_true, y_pred)
 
 
 # Test training with some sklearn models
 def test_models():
     rand = RandomState(42)
+    combined_config = FeatureConfig(Strategy.COMBINED)
+    multi_config = FeatureConfig(Strategy.MULTI)
+    multi_pca_config = replace(multi_config, use_pca=True)
     skmodels = [
         # (GaussianNB, {}, Strategy.COMBINED),
         # (GaussianNB, {}, Strategy.MULTI),
-        (RandomForestClassifier, {}, Strategy.COMBINED),
-        (RandomForestClassifier, {}, Strategy.MULTI),
+        (RandomForestClassifier, {}, combined_config),
+        (RandomForestClassifier, {}, multi_config),
+        (RandomForestClassifier, {}, multi_pca_config),
         # (SVC, {'kernel': 'rbf'}, Strategy.COMBINED),
     ]
     for klass, args, strat in skmodels:
