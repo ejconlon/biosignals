@@ -17,3 +17,5 @@
 * Experiment with creating larger prepared datasets with `max_jitter=50` or so
   * We're not using validation so can make that 0 in the spec
 * Define datasets for per-participant splits
+* Graphs for the paper
+  * Some labeled windows (with onset, window start and end) - both positive and negative examples
