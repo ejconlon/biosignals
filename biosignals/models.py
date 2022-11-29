@@ -264,7 +264,7 @@ class FeatureModel(Model):
         return (x, y)
 
     # Implement this for training
-    def train_one(self, x: np.ndarray, y_true: np.ndarray):
+    def train_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
         raise NotImplementedError()
 
     # Implement this for testing
@@ -280,10 +280,7 @@ class FeatureModel(Model):
         # Very few models are incremental, so we have to fit all at once,
         # which means we have to load and concat all training data now.
         x, y = self._load_proc(train_loaders, rand, is_train=True)
-        # Not every model has fit_predict, so we have to fit and predict
-        # separately if we want to see perf on the training set.
-        self.train_one(x, y)
-        return self.test_one(x, y)
+        return self.train_one(x, y)
 
     def test_all(self, test_loaders: List[bp.FrameLoader]) -> Results:
         x, y = self._load_proc(test_loaders, None, is_train=False)
@@ -298,14 +295,12 @@ class SkModel(FeatureModel):
         super().__init__(config)
         self._model = model_class(**model_args)
 
-    def train_one(self, x: np.ndarray, y_true: np.ndarray):
+    def train_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
         self._model.fit(x, y_true)
+        return self.test_one(x, y_true)
 
     def test_one(self, x: np.ndarray, y_true: np.ndarray) -> Results:
         y_pred = self._model.predict(x)
-        # NOTE: Don't want to pop up window when running on command line!
-        # Need to return something and evaluate it later.
-        # be.evaluate_model(y_pred, y_true)
         return Results.from_pred(y_true, y_pred)
 
 
