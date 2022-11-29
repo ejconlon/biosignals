@@ -124,10 +124,11 @@ def load_multi_features(
     extras: Optional[List[str]] = None
 ) -> Tuple[List[str], str, pd.DataFrame]:
     assert n_clusters > 0
-    columns = list(SK_FEATURES)
-    columns.extend(['cluster_id', 'window_id', 'part', 'label'])
+    feat_columns = list(SK_FEATURES)
     if extras is not None:
-        columns.extend(extras)
+        feat_columns.extend(extras)
+    columns = list(feat_columns)
+    columns.extend(['cluster_id', 'window_id', 'part', 'label'])
     df = loader.load(columns)
     # Find all unique (window_id, part) in the dataframe (bad way to do it)
     part_windows: Dict[Tuple[int, str], int] = {}
@@ -143,7 +144,7 @@ def load_multi_features(
     for t, n in part_windows.items():
         assert n == n_clusters, f'not full cluster for {t}: {n} (expected {n_clusters})'
     # Group and return the new df
-    pairs = [(k, i) for i in range(n_clusters) for k in SK_FEATURES]
+    pairs = [(k, i) for i in range(n_clusters) for k in feat_columns]
     new_feats = [f'{k}_{i}' for (k, i) in pairs]
     new_cols: Dict[Tuple[str, int, int], Dict[str, float]] = {}
     new_labels: Dict[Tuple[str, int, int], int] = {}
@@ -155,7 +156,7 @@ def load_multi_features(
             w = int(row['window_id'])
             g = (p, i, w)
             assert g not in new_cols
-            new_cols[g] = {k: row[k] for k in SK_FEATURES}
+            new_cols[g] = {k: row[k] for k in feat_columns}
             if i == 0:
                 assert g not in new_labels
                 new_labels[g] = int(row['label'])
