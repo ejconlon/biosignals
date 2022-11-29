@@ -16,7 +16,7 @@ from numpy.random import RandomState
 from enum import Enum
 
 
-SK_FEATURES = [
+FEATURES = [
     'x', 'y', 'z',
     'theta_power', 'alpha_power', 'beta_power', 'gamma_power'
 ]
@@ -27,12 +27,15 @@ def load_single_features(
     loader: bp.FrameLoader,
     extras: Optional[List[str]] = None
 ) -> Tuple[List[str], str, pd.DataFrame]:
-    columns = list(SK_FEATURES)
+    feat_columns = list(FEATURES)
+    if extras is not None:
+        feat_columns.extend(extras)
+    columns = list(feat_columns)
     columns.extend(['label'])
     if extras is not None:
         columns.extend(extras)
     df = loader.load(columns)
-    return (SK_FEATURES, 'label', df)
+    return (feat_columns, 'label', df)
 
 
 # Load/transform features for multi-channel classification
@@ -43,7 +46,7 @@ def load_multi_features(
     extras: Optional[List[str]] = None
 ) -> Tuple[List[str], str, pd.DataFrame]:
     assert n_clusters > 0
-    feat_columns = list(SK_FEATURES)
+    feat_columns = list(FEATURES)
     if extras is not None:
         feat_columns.extend(extras)
     columns = list(feat_columns)
@@ -84,7 +87,7 @@ def load_multi_features(
     for (w, p) in part_windows.keys():
         for i in range(n_clusters):
             g = (p, i, w)
-            for k in SK_FEATURES:
+            for k in feat_columns:
                 f = f'{k}_{i}'
                 conc_cols[f].append(new_cols[g][k])
             if i == 0:
