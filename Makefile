@@ -63,20 +63,9 @@ clean-docs:
 report:
 	cd docs && latexmk -pdf -pdflatex="pdflatex -shell-escape -interaction=nonstopmode" -use-make ./biosignals-report.tex
 
-# Build the latex presentation
-.PHONY: presentation
-presentation:
-	cd docs && latexmk -pdf -pdflatex="pdflatex -shell-escape -interaction=nonstopmode" -use-make ./biosignals-presentation.tex
-
 # Clean and build the latex report
 # For some reason having these as make deps is racy. Just run them in sequence.
 .PHONY: full-report
 full-report:
 	$(MAKE) clean-docs
 	$(MAKE) report
-
-# Clean and build the latex presentation
-.PHONY: full-presentation
-full-presentation:
-	$(MAKE) clean-docs
-	$(MAKE) presentation
