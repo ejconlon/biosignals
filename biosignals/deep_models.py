@@ -1,3 +1,5 @@
+import os
+import shutil
 from dataclasses import dataclass, replace
 from keras.models import Sequential
 from keras.layers import Dense
@@ -108,18 +110,21 @@ def test_models():
     multi_pca_config = replace(multi_config, use_pca=True)
     seq_config = SequentialConfig()
     deepmodels = [
-        (LSTM, {}, multi_config, seq_config),
-        # (LSTM, {}, multi_pca_config, seq_config),
-        (GRU, {}, multi_config, seq_config),
-        # (GRU, {}, multi_pca_config, seq_config),
+        ('lstm', LSTM, {}, multi_config, seq_config),
+        # ('lstm_pca', LSTM, {}, multi_pca_config, seq_config),
+        ('gru', GRU, {}, multi_config, seq_config),
+        # ('gru_pca', GRU, {}, multi_pca_config, seq_config),
     ]
-    for klass, args, feat_config, seq_config in deepmodels:
-        print(f'Training model {klass} {args} {feat_config} {seq_config}')
+    os.makedirs('models', exist_ok=True)
+    for name, klass, args, feat_config, seq_config in deepmodels:
+        print(f'Training model {name} {klass} {args} {feat_config} {seq_config}')
+        dest_dir = f'models/{name}'
+        if os.path.exists(dest_dir):
+            shutil.rmtree(dest_dir)
+        os.makedirs(dest_dir)
         model = SequentialModel(klass, args, feat_config, seq_config)
         train_res, test_res = model.execute('rand', rand)
-        # print(train_res)
-        print('train accuracy', train_res.accuracy())
-        # print(test_res)
-        print('test accuracy', test_res.accuracy())
-        # be.plot_results('train', train_res)
-        # be.plot_results('test', test_res)
+        be.eval_performance(name, 'train', train_res, dest_dir)
+        be.eval_performance(name, 'test', test_res, dest_dir)
+        be.plot_results(name, 'train', train_res, dest_dir)
+        be.plot_results(name, 'test', test_res, dest_dir)

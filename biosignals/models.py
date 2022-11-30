@@ -1,8 +1,8 @@
 from dataclasses import dataclass, replace
+import os
+import shutil
 import pickle
 from typing import Any, Dict, List, Optional, Tuple
-# from sklearn.naive_bayes import GaussianNB
-# from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler, MaxAbsScaler
 from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
@@ -319,19 +319,22 @@ def test_models():
     multi_eeg_config = replace(multi_config, use_eeg=True)
     multi_pca_config = replace(multi_config, use_pca=True)
     skmodels = [
-        (RandomForestClassifier, {}, combined_config),
-        # (RandomForestClassifier, {}, multi_config),
-        # (RandomForestClassifier, {}, multi_pca_config),
-        # (RandomForestClassifier, {}, eeg_config),
-        # (RandomForestClassifier, {}, multi_eeg_config),
+        ('rf_combined', RandomForestClassifier, {}, combined_config),
+        ('rf_multi', RandomForestClassifier, {}, multi_config),
+        ('rf_multi_pca', RandomForestClassifier, {}, multi_pca_config),
+        # ('rf_eeg_test', RandomForestClassifier, {}, eeg_config),
+        # ('rf_eeg_test_multi', RandomForestClassifier, {}, multi_eeg_config),
     ]
-    for klass, args, feat_config in skmodels:
-        print(f'Training model {klass} {args} {feat_config}')
+    os.makedirs('models', exist_ok=True)
+    for name, klass, args, feat_config in skmodels:
+        print(f'Training model {name} {klass} {args} {feat_config}')
+        dest_dir = f'models/{name}'
+        if os.path.exists(dest_dir):
+            shutil.rmtree(dest_dir)
+        os.makedirs(dest_dir)
         model = SkModel(klass, args, feat_config)
         train_res, test_res = model.execute('rand', rand)
-        # print(train_res)
-        print('train accuracy', train_res.accuracy())
-        # print(test_res)
-        print('test accuracy', test_res.accuracy())
-        # be.plot_results('train', train_res)
-        # be.plot_results('test', test_res)
+        be.eval_performance(name, 'train', train_res, dest_dir)
+        be.eval_performance(name, 'test', test_res, dest_dir)
+        be.plot_results(name, 'train', train_res, dest_dir)
+        be.plot_results(name, 'test', test_res, dest_dir)
