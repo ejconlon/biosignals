@@ -154,7 +154,7 @@ class Strategy(Enum):
 class Model:
     # Train on all train/validate datasets
     # Return final results for training set
-    def train_all(
+    def train_dataframe(
         self,
         train_loaders: List[bp.FrameLoader],
         validate_loaders: List[bp.FrameLoader],
@@ -163,14 +163,14 @@ class Model:
         raise NotImplementedError()
 
     # Test on all test datasets
-    def test_all(self, test_loaders: List[bp.FrameLoader]) -> be.Results:
+    def test_dataframe(self, test_loaders: List[bp.FrameLoader]) -> be.Results:
         raise NotImplementedError()
 
     # Shorthand for training and testing on a prepared set
     def execute(self, prep_name: str, rand: Optional[RandomState]) -> Tuple[be.Results, be.Results]:
         lds = bp.read_prepared(prep_name)
-        train_res = self.train_all(lds[bs.Role.TRAIN], lds[bs.Role.VALIDATE], rand)
-        test_res = self.test_all(lds[bs.Role.TEST])
+        train_res = self.train_dataframe(lds[bs.Role.TRAIN], lds[bs.Role.VALIDATE], rand)
+        test_res = self.test_dataframe(lds[bs.Role.TEST])
         return (train_res, test_res)
 
     # Save model to the given path
@@ -265,15 +265,18 @@ class FeatureModel(Model):
 
     # Implement this for training
     # Takes x - normal features, w - eeg feature, y - label
-    def train_one(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
+    # x - shaped (num_rows, num_features))
+    # eeg data (w - shaped (num_rows, num_eeg_features, eeg_len)))
+    # and true labels (y - shaped (num_rows,))
+    def train_numpy(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
         raise NotImplementedError()
 
     # Implement this for testing
     # Takes x - normal features, w - eeg feature, y - label
-    def test_one(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
+    def test_numpy(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
         raise NotImplementedError()
 
-    def train_all(
+    def train_dataframe(
         self,
         train_loaders: List[bp.FrameLoader],
         validate_loaders: List[bp.FrameLoader],
@@ -282,11 +285,11 @@ class FeatureModel(Model):
         # Very few models are incremental, so we have to fit all at once,
         # which means we have to load and concat all training data now.
         x, w, y = self._load_proc(train_loaders, rand, is_train=True)
-        return self.train_one(x, w, y)
+        return self.train_numpy(x, w, y)
 
-    def test_all(self, test_loaders: List[bp.FrameLoader]) -> be.Results:
+    def test_dataframe(self, test_loaders: List[bp.FrameLoader]) -> be.Results:
         x, w, y = self._load_proc(test_loaders, None, is_train=False)
-        return self.test_one(x, w, y)
+        return self.test_numpy(x, w, y)
 
 
 # An sklearn model
@@ -297,11 +300,11 @@ class SkModel(FeatureModel):
         super().__init__(feat_config)
         self._model = model_class(**model_args)
 
-    def train_one(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
+    def train_numpy(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
         self._model.fit(x, y_true)
-        return self.test_one(x, w, y_true)
+        return self.test_numpy(x, w, y_true)
 
-    def test_one(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
+    def test_numpy(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
         y_pred = self._model.predict(x)
         return be.Results(y_true=y_true, y_pred=y_pred)
 
@@ -316,14 +319,11 @@ def test_models():
     multi_eeg_config = replace(multi_config, use_eeg=True)
     multi_pca_config = replace(multi_config, use_pca=True)
     skmodels = [
-        # (GaussianNB, {}, Strategy.COMBINED),
-        # (GaussianNB, {}, Strategy.MULTI),
         (RandomForestClassifier, {}, combined_config),
         # (RandomForestClassifier, {}, multi_config),
         # (RandomForestClassifier, {}, multi_pca_config),
         # (RandomForestClassifier, {}, eeg_config),
         # (RandomForestClassifier, {}, multi_eeg_config),
-        # (SVC, {'kernel': 'rbf'}, Strategy.COMBINED),
     ]
     for klass, args, feat_config in skmodels:
         print(f'Training model {klass} {args} {feat_config}')

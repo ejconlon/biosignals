@@ -24,7 +24,29 @@ class SequentialConfig:
     verbose: bool = True
 
 
+# # Example interface for filling in neural network structure
+# class ModelBuilder:
+#     def build(self, model: Sequential, shape: List[int]):
+#         raise NotImplementedError()
+
+# # Example
+# class LstmModelBuilder:
+#     def build(self, model: Sequential, shape: List[int]):
+#        model.add(
+#             LSTM(
+#                 512,
+#                 input_shape=tuple(shape),
+#                 return_sequences=True
+#             )
+#         )
+#         model.add(Activation("relu"))
+#         model.add(LSTM(256))
+#         model.add(Dense(1, activation='sigmoid'))
+#         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+
 class SequentialModel(bm.FeatureModel):
+    # TODO Don't take in model class, take in a model builder
     def __init__(
         self,
         model_class: Any,
@@ -38,7 +60,7 @@ class SequentialModel(bm.FeatureModel):
         self._model_class = model_class
 
     # Takes x - normal features, w - eeg features, y - label
-    def train_one(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
+    def train_numpy(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
         x_tf = tf.convert_to_tensor(x, dtype=tf.float64)
         x_tf = tf.expand_dims(x_tf, axis=1)
         y_true_tf = tf.convert_to_tensor(y_true, dtype=tf.int32)
@@ -69,7 +91,7 @@ class SequentialModel(bm.FeatureModel):
         return be.Results(y_true=y_true, y_pred=y_pred)
 
     # Takes x - normal features, w - eeg features, y - label
-    def test_one(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
+    def test_numpy(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
         x_tf = tf.convert_to_tensor(x, dtype=tf.float64)
         x_tf = tf.expand_dims(x_tf, axis=1)
         # y_true_tf = tf.convert_to_tensor(y_true, dtype=tf.int32)
