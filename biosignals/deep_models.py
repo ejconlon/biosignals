@@ -48,58 +48,43 @@ class SequentialConfig:
 
 
 class SequentialModel(bm.FeatureModel):
-    # TODO Don't take in model class, take in a model builder
     def __init__(
         self,
-        model_class: Any,
+        model: Sequential,
         model_args: Dict[str, Any],
         feat_config: bm.FeatureConfig,
         seq_config: SequentialConfig
     ):
         super().__init__(feat_config)
         self._seq_config = seq_config
-        self._model = Sequential()
-        self._model_class = model_class
+        self._model = model
 
     # Takes x - normal features, w - eeg features, y - label
     def train_numpy(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
-        x_tf = tf.convert_to_tensor(x, dtype=tf.float64)
-        x_tf = tf.expand_dims(x_tf, axis=1)
+        w_T = np.swapaxes(w, 1, 2)
+        print(w_T.shape)
+        w_tf = tf.convert_to_tensor(w_T, dtype=tf.float64)
         y_true_tf = tf.convert_to_tensor(y_true, dtype=tf.int32)
-        self._model = Sequential()
-        self._model.add(
-            self._model_class(
-                512,
-                input_shape=(x_tf.shape[1], x_tf.shape[2]),
-                return_sequences=True
-            )
-        )
-        self._model.add(Activation("relu"))
-        self._model.add(self._model_class(256))
-        self._model.add(Dense(1, activation='sigmoid'))
         self._model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
         if self._seq_config.verbose:
             print(self._model.summary())
         self._model.fit(
-            x_tf,
+            w_tf,
             y_true_tf,
             epochs=self._seq_config.num_epochs,
             batch_size=self._seq_config.batch_size,
             verbose=self._seq_config.verbose
         )
         # Now predict
-        y_pred_tf = self._model.predict(x_tf)
-        y_pred = tf.squeeze(y_pred_tf, axis=1).numpy()
-        return be.Results(y_true=y_true, y_pred=y_pred)
+        y_pred_tf = self._model.predict(w_tf)
+        return be.Results(y_true=y_true, y_pred=y_pred_tf)
 
     # Takes x - normal features, w - eeg features, y - label
     def test_numpy(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
-        x_tf = tf.convert_to_tensor(x, dtype=tf.float64)
-        x_tf = tf.expand_dims(x_tf, axis=1)
-        # y_true_tf = tf.convert_to_tensor(y_true, dtype=tf.int32)
-        y_pred_tf = self._model.predict(x_tf)
-        y_pred = tf.squeeze(y_pred_tf, axis=1).numpy()
-        return be.Results(y_true=y_true, y_pred=y_pred)
+        w_T = np.swapaxes(w, 1, 2)
+        w_tf = tf.convert_to_tensor(w_T, dtype=tf.float64)
+        y_pred_tf = self._model.predict(w_tf)
+        return be.Results(y_true=y_true, y_pred=y_pred_tf)
 
 
 # Test training with some deep learning models
@@ -107,13 +92,27 @@ def test_models():
     bp.ensure_rand()
     rand = RandomState(42)
     multi_config = bm.FeatureConfig(bm.Strategy.MULTI)
+    multi_eeg_config = bm.FeatureConfig(strategy=bm.Strategy.MULTI, use_eeg=True)
     multi_pca_config = replace(multi_config, use_pca=True)
-    seq_config = SequentialConfig()
+    seq_config = SequentialConfig(num_epochs=30, batch_size=64, verbose=True)
+
+    # Create LSTM model
+    lstmModel = Sequential()
+    lstmModel.add(LSTM(512, input_shape=(750, 32), return_sequences=True))
+    lstmModel.add(Activation("relu"))
+    lstmModel.add(LSTM(256))
+    lstmModel.add(Dense(1, activation='sigmoid'))
+
+    # Create GRU model
+    gruModel = Sequential()
+    gruModel.add(GRU(512, input_shape=(750, 32), return_sequences=True))
+    gruModel.add(Activation("relu"))
+    gruModel.add(GRU(256))
+    gruModel.add(Dense(1, activation='sigmoid'))
+
     deepmodels = [
-        ('lstm', LSTM, {}, multi_config, seq_config),
-        # ('lstm_pca', LSTM, {}, multi_pca_config, seq_config),
-        ('gru', GRU, {}, multi_config, seq_config),
-        # ('gru_pca', GRU, {}, multi_pca_config, seq_config),
+        ('lstm', lstmModel, {}, multi_eeg_config, seq_config),
+        ('gru', gruModel, {}, multi_eeg_config, seq_config),
     ]
     os.makedirs('models', exist_ok=True)
     for name, klass, args, feat_config, seq_config in deepmodels:
