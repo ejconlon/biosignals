@@ -7,7 +7,7 @@ default:
 .PHONY: venv
 venv:
 	python3 -m venv --upgrade-deps .venv
-	.venv/bin/python3 -m pip install wheel -r dev-requirements.txt -r requirements.txt
+	.venv/bin/python3 -m pip install wheel -r dev-requirements.txt -r requirements.lock.txt
 
 # Format - for now just sort imports
 .PHONY: format
@@ -69,3 +69,7 @@ report:
 full-report:
 	$(MAKE) clean-docs
 	$(MAKE) report
+
+.PHONY: lock
+lock:
+	python3 -m piptools compile requirements.txt -o requirements.lock.txt

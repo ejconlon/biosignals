@@ -9,4 +9,4 @@ soundfile
 librosa
 keras
 tensorflow
-pyarrow
+pyarrow < 10.0.0

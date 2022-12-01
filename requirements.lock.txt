@@ -154,7 +154,7 @@ ptyprocess==0.7.0
     # via pexpect
 pure-eval==0.2.2
     # via stack-data
-pyarrow==10.0.1
+pyarrow==9.0.0
     # via -r requirements.txt
 pyasn1==0.4.8
     # via
