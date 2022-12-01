@@ -135,9 +135,9 @@ def test_models():
     gruModel.add(Dense(1, activation='sigmoid'))
 
     deepmodels = [
-        ('dummy', dummyModel, {}, multi_eeg_config, replace(seq_config, num_epochs=1)),
-        # ('lstm', lstmModel, {}, multi_eeg_config, seq_config),
-        # ('gru', gruModel, {}, multi_eeg_config, seq_config),
+        # ('dummy', dummyModel, {}, multi_eeg_config, replace(seq_config, num_epochs=1)),
+        ('lstm', lstmModel, {}, multi_eeg_config, seq_config),
+        ('gru', gruModel, {}, multi_eeg_config, seq_config),
     ]
     os.makedirs('models', exist_ok=True)
     for name, klass, args, feat_config, seq_config in deepmodels:
