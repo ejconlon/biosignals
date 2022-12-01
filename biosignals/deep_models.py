@@ -2,7 +2,8 @@ import os
 import shutil
 from dataclasses import dataclass, replace
 from keras.models import Sequential, load_model
-from keras.layers import Dense, LSTM, GRU, Activation  # Dropout, BatchNormalization
+from keras.layers import Dense, LSTM, GRU, Activation, Conv1D, Flatten, Input  # Dropout, BatchNormalization
+from keras import regularizers
 from typing import Any, Dict, cast
 import biosignals.models as bm
 import biosignals.evaluation as be
@@ -114,6 +115,12 @@ def test_models():
     multi_eeg_config = bm.FeatureConfig(strategy=bm.Strategy.MULTI, use_eeg=True)
     multi_pca_config = replace(multi_config, use_pca=True)
     seq_config = SequentialConfig(num_epochs=30, batch_size=64, verbose=True)
+    seq_config_less = replace(seq_config, num_epochs=10)
+
+    # Create dummy model (for testing only)
+    dummyModel = Sequential()
+    dummyModel.add(LSTM(1, input_shape=(750, 32)))
+    dummyModel.add(Dense(1, activation='sigmoid'))
 
     # Create dummy model (for testing only)
     dummyModel = Sequential()
@@ -134,10 +141,31 @@ def test_models():
     gruModel.add(GRU(256))
     gruModel.add(Dense(1, activation='sigmoid'))
 
+    # Create CNN-LSTM model
+    clModel = Sequential()
+    clModel.add(Input(shape=(750, 32)))     # (None, 750, 32))
+
+    clModel.add(LSTM(256,
+                     return_sequences=True,
+                     activation="relu",
+                     dropout=0.1,
+                     kernel_regularizer=regularizers.L2(0.001)))
+    clModel.add(LSTM(256,
+                     return_sequences=True,
+                     activation="relu"))
+    clModel.add(Dense(128))
+    clModel.add(Conv1D(filters=64,
+                       kernel_size=1,
+                       strides=1))
+    clModel.add(Flatten())
+    clModel.add(Dense(64))
+    clModel.add(Dense(1, activation='sigmoid'))
+
     deepmodels = [
         # ('dummy', dummyModel, {}, multi_eeg_config, replace(seq_config, num_epochs=1)),
         ('lstm', lstmModel, {}, multi_eeg_config, seq_config),
         ('gru', gruModel, {}, multi_eeg_config, seq_config),
+        ('lstm-cnn', clModel, {}, multi_eeg_config, seq_config_less),
     ]
     os.makedirs('models', exist_ok=True)
     for name, klass, args, feat_config, seq_config in deepmodels:
