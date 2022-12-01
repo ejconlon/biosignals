@@ -122,11 +122,6 @@ def test_models():
     dummyModel.add(LSTM(1, input_shape=(750, 32)))
     dummyModel.add(Dense(1, activation='sigmoid'))
 
-    # Create dummy model (for testing only)
-    dummyModel = Sequential()
-    dummyModel.add(LSTM(1, input_shape=(750, 32)))
-    dummyModel.add(Dense(1, activation='sigmoid'))
-
     # Create LSTM model
     lstmModel = Sequential()
     lstmModel.add(LSTM(512, input_shape=(750, 32), return_sequences=True))
