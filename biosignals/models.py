@@ -173,6 +173,11 @@ class Model:
         test_res = self.test_dataframe(lds[bs.Role.TEST])
         return (train_res, test_res)
 
+    # Shorthand for testing on a prepared set
+    def execute_test(self, prep_name: str) -> be.Results:
+        lds = bp.read_prepared(prep_name)
+        return self.test_dataframe(lds[bs.Role.TEST])
+
     # Save model to the given path
     def save(self, path: str):
         with open(path, 'wb') as f:
@@ -334,7 +339,15 @@ def test_models():
         os.makedirs(dest_dir)
         model = SkModel(klass, args, feat_config)
         train_res, test_res = model.execute('rand', rand)
+        model.save(f'{dest_dir}/model.pickle')
         be.eval_performance(name, 'train', train_res, dest_dir)
         be.eval_performance(name, 'test', test_res, dest_dir)
         be.plot_results(name, 'train', train_res, dest_dir)
         be.plot_results(name, 'test', test_res, dest_dir)
+
+
+def test_model_load():
+    for name in ['rf_combined']:
+        model = SkModel.load(f'models/{name}/model.pickle')
+        test_res = model.execute_test('rand')
+        be.eval_performance(name, 'test', test_res, '/tmp')
