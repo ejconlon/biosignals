@@ -1,6 +1,7 @@
 flake8
 mypy
 jupyter
+IPython
 
 # stubs
 pandas-stubs
