@@ -1,10 +1,9 @@
 import os
 import shutil
 from dataclasses import dataclass, replace
-from keras.models import Sequential
-from keras.layers import Dense
-from keras.layers import LSTM, GRU, Activation  # Dropout, BatchNormalization
-from typing import Any, Dict
+from keras.models import Sequential, load_model
+from keras.layers import Dense, LSTM, GRU, Activation  # Dropout, BatchNormalization
+from typing import Any, Dict, cast
 import biosignals.models as bm
 import biosignals.evaluation as be
 from numpy.random import RandomState
@@ -86,6 +85,26 @@ class SequentialModel(bm.FeatureModel):
         y_pred_tf = self._model.predict(w_tf)
         return be.Results(y_true=y_true, y_pred=y_pred_tf)
 
+    # Overridden: Save model to the given directory (must exist)
+    def save(self, model_dir: str):
+        # Need to save model weights first
+        self._model.save(f'{model_dir}/model.tf')
+        # Null out the model so it won't be pickled
+        # But save it to restore right after
+        saved_model = self._model
+        self._model = None
+        bm.pickle_save(self, model_dir)
+        # Restore the model
+        self._model = saved_model
+
+    # Overridden: Load model from the given directory (must exist)
+    @staticmethod
+    def load(model_dir: str) -> 'SequentialModel':
+        seq = cast(SequentialModel, bm.pickle_load(model_dir))
+        # Now load the model
+        seq._model = load_model(f'{model_dir}/model.tf')
+        return seq
+
 
 # Test training with some deep learning models
 def test_models():
@@ -95,6 +114,11 @@ def test_models():
     multi_eeg_config = bm.FeatureConfig(strategy=bm.Strategy.MULTI, use_eeg=True)
     multi_pca_config = replace(multi_config, use_pca=True)
     seq_config = SequentialConfig(num_epochs=30, batch_size=64, verbose=True)
+
+    # Create dummy model (for testing only)
+    dummyModel = Sequential()
+    dummyModel.add(LSTM(1, input_shape=(750, 32)))
+    dummyModel.add(Dense(1, activation='sigmoid'))
 
     # Create LSTM model
     lstmModel = Sequential()
@@ -111,19 +135,28 @@ def test_models():
     gruModel.add(Dense(1, activation='sigmoid'))
 
     deepmodels = [
-        ('lstm', lstmModel, {}, multi_eeg_config, seq_config),
-        ('gru', gruModel, {}, multi_eeg_config, seq_config),
+        ('dummy', dummyModel, {}, multi_eeg_config, replace(seq_config, num_epochs=1)),
+        # ('lstm', lstmModel, {}, multi_eeg_config, seq_config),
+        # ('gru', gruModel, {}, multi_eeg_config, seq_config),
     ]
     os.makedirs('models', exist_ok=True)
     for name, klass, args, feat_config, seq_config in deepmodels:
         print(f'Training model {name} {klass} {args} {feat_config} {seq_config}')
-        dest_dir = f'models/{name}'
-        if os.path.exists(dest_dir):
-            shutil.rmtree(dest_dir)
-        os.makedirs(dest_dir)
+        model_dir = f'models/{name}'
+        if os.path.exists(model_dir):
+            shutil.rmtree(model_dir)
+        os.makedirs(model_dir)
         model = SequentialModel(klass, args, feat_config, seq_config)
         train_res, test_res = model.execute('rand', rand)
-        be.eval_performance(name, 'train', train_res, dest_dir)
-        be.eval_performance(name, 'test', test_res, dest_dir)
-        be.plot_results(name, 'train', train_res, dest_dir)
-        be.plot_results(name, 'test', test_res, dest_dir)
+        model.save(model_dir)
+        be.eval_performance(name, 'train', train_res, model_dir)
+        be.eval_performance(name, 'test', test_res, model_dir)
+        be.plot_results(name, 'train', train_res, model_dir)
+        be.plot_results(name, 'test', test_res, model_dir)
+
+
+def test_model_load():
+    for name in ['dummy']:
+        model = SequentialModel.load(f'models/{name}')
+        test_res = model.execute_test('rand')
+        be.eval_performance(name, 'test', test_res, '/tmp')

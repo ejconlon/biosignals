@@ -150,6 +150,20 @@ class Strategy(Enum):
     # ENSEMBLE = 2
 
 
+# Save model to the given directory (must exist)
+def pickle_save(model: Any, model_dir: str):
+    path = f'{model_dir}/model.pickle'
+    with open(path, 'wb') as f:
+        pickle.dump(model, f, protocol=5)
+
+
+# Load model from the given directory (must exist)
+def pickle_load(model_dir: str) -> Any:
+    path = f'{model_dir}/model.pickle'
+    with open(path, 'rb') as f:
+        return pickle.load(f)
+
+
 # Abstract definition for a model
 class Model:
     # Train on all train/validate datasets
@@ -178,16 +192,14 @@ class Model:
         lds = bp.read_prepared(prep_name)
         return self.test_dataframe(lds[bs.Role.TEST])
 
-    # Save model to the given path
-    def save(self, path: str):
-        with open(path, 'wb') as f:
-            pickle.dump(self, f)
+    # Save model to the given directory (must exist)
+    def save(self, model_dir: str):
+        pickle_save(self, model_dir)
 
-    # Load model from the given path
-    @classmethod
-    def load(cls, path: str) -> 'Model':
-        with open(path, 'rb') as f:
-            return pickle.load(f)
+    # Load model from the given directory (must exist)
+    @staticmethod
+    def load(model_dir: str) -> 'Model':
+        return pickle_load(model_dir)
 
 
 # Various options to control feature loading
@@ -333,21 +345,21 @@ def test_models():
     os.makedirs('models', exist_ok=True)
     for name, klass, args, feat_config in skmodels:
         print(f'Training model {name} {klass} {args} {feat_config}')
-        dest_dir = f'models/{name}'
-        if os.path.exists(dest_dir):
-            shutil.rmtree(dest_dir)
-        os.makedirs(dest_dir)
+        model_dir = f'models/{name}'
+        if os.path.exists(model_dir):
+            shutil.rmtree(model_dir)
+        os.makedirs(model_dir)
         model = SkModel(klass, args, feat_config)
         train_res, test_res = model.execute('rand', rand)
-        model.save(f'{dest_dir}/model.pickle')
-        be.eval_performance(name, 'train', train_res, dest_dir)
-        be.eval_performance(name, 'test', test_res, dest_dir)
-        be.plot_results(name, 'train', train_res, dest_dir)
-        be.plot_results(name, 'test', test_res, dest_dir)
+        model.save(model_dir)
+        be.eval_performance(name, 'train', train_res, model_dir)
+        be.eval_performance(name, 'test', test_res, model_dir)
+        be.plot_results(name, 'train', train_res, model_dir)
+        be.plot_results(name, 'test', test_res, model_dir)
 
 
 def test_model_load():
     for name in ['rf_combined']:
-        model = SkModel.load(f'models/{name}/model.pickle')
+        model = SkModel.load(f'models/{name}')
         test_res = model.execute_test('rand')
         be.eval_performance(name, 'test', test_res, '/tmp')
