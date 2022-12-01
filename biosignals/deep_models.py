@@ -50,17 +50,27 @@ class SequentialConfig:
 class SequentialModel(bm.FeatureModel):
     def __init__(
         self,
-        model: Sequential,
+        model,
         model_args: Dict[str, Any],
         feat_config: bm.FeatureConfig,
         seq_config: SequentialConfig
     ):
         super().__init__(feat_config)
         self._seq_config = seq_config
-        self._model = model
+        if type(model) is Sequential:
+            self._model = model  # We have a Sequantial model
+            self._isSequentialModel = True
+        elif issubclass(model, tf.keras.Model):
+            self._model = model()  # We have a custom class model
+            self._isSequentialModel = False
+        else:
+            print(type(model))
+            raise TypeError("Only Sequential or custom model classes are supported.")
 
-    # Takes x - normal features, w - eeg features, y - label
+    # Takes x - normal features, w - eeg features, y - label. Call this for Sequential models.
     def train_numpy(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
+        if not self._isSequentialModel:
+            return self.train_numpy_custom(x, w, y_true)
         w_T = np.swapaxes(w, 1, 2)
         print(w_T.shape)
         w_tf = tf.convert_to_tensor(w_T, dtype=tf.float64)
@@ -79,8 +89,10 @@ class SequentialModel(bm.FeatureModel):
         y_pred_tf = self._model.predict(w_tf)
         return be.Results(y_true=y_true, y_pred=y_pred_tf)
 
-    # Takes x - normal features, w - eeg features, y - label
+    # Takes x - normal features, w - eeg features, y - label. Call this for Sequential models.
     def test_numpy(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
+        if not self._isSequentialModel:
+            return self.test_numpy_custom(x, w, y_true)
         w_T = np.swapaxes(w, 1, 2)
         w_tf = tf.convert_to_tensor(w_T, dtype=tf.float64)
         y_pred_tf = self._model.predict(w_tf)
@@ -105,6 +117,80 @@ class SequentialModel(bm.FeatureModel):
         # Now load the model
         seq._model = load_model(f'{model_dir}/model.tf')
         return seq
+
+    # Takes x - normal features, w - eeg features, y - label. Call this for custom model classes (i.e. not Sequential)
+    def train_numpy_custom(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
+        w_T = np.swapaxes(w, 1, 2)
+        w_tf = tf.convert_to_tensor(w_T, dtype=tf.float64)
+        x_tf = tf.convert_to_tensor(x, dtype=tf.float64)
+        y_true_tf = tf.convert_to_tensor(y_true, dtype=tf.int32)
+        model_inputs = [x_tf, w_tf]
+
+        self._model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+        # if self._seq_config.verbose:
+        #  print(self._model.summary())
+        self._model.fit(
+            [x_tf, w_tf],
+            y_true_tf,
+            epochs=self._seq_config.num_epochs,
+            batch_size=self._seq_config.batch_size,
+            verbose=self._seq_config.verbose
+        )
+        # Now predict
+        y_pred_tf = self._model.predict([x_tf, w_tf])
+        return be.Results(y_true=y_true, y_pred=y_pred_tf)
+
+    # Takes x - normal features, w - eeg features, y - label. Call this for custom model classes (i.e. not Sequential)
+    def test_numpy_custom(self, x: np.ndarray, w: np.ndarray, y_true: np.ndarray) -> be.Results:
+        w_T = np.swapaxes(w, 1, 2)
+        x_tf = tf.convert_to_tensor(x, dtype=tf.float64)
+        w_tf = tf.convert_to_tensor(w_T, dtype=tf.float64)
+        y_pred_tf = self._model.predict([x_tf, w_tf])
+        return be.Results(y_true=y_true, y_pred=y_pred_tf)
+
+
+class GRUFeatureModel(tf.keras.Model):
+
+    def __init__(self):
+        super(GRUFeatureModel, self).__init__()
+        self.gru1 = GRU(512, input_shape=(750, 32), return_sequences=True)
+        self.activation = Activation("relu")
+        self.gru2 = GRU(256)
+        self.dense1 = Dense(128, activation='relu')
+        self.dense2 = Dense(128, activation='relu')
+        self.dense3 = Dense(1, activation='sigmoid')
+
+    def call(self, inputs):
+        [x, w] = inputs
+        out1 = self.gru1(w)
+        out1 = self.activation(out1)
+        out1 = self.gru2(out1)
+        out1 = self.dense1(out1)
+        out2 = self.dense2(x)
+        out = tf.keras.layers.Add()([out1, out2])
+        return self.dense3(out)
+
+
+class LSTMFeatureModel(tf.keras.Model):
+
+    def __init__(self):
+        super(LSTMFeatureModel, self).__init__()
+        self.lstm1 = LSTM(512, input_shape=(750, 32), return_sequences=True)
+        self.activation = Activation("relu")
+        self.lstm2 = LSTM(256)
+        self.dense1 = Dense(128, activation='relu')
+        self.dense2 = Dense(128, activation='relu')
+        self.dense3 = Dense(1, activation='sigmoid')
+
+    def call(self, inputs):
+        [x, w] = inputs
+        out1 = self.lstm1(w)
+        out1 = self.activation(out1)
+        out1 = self.lstm2(out1)
+        out1 = self.dense1(out1)
+        out2 = self.dense2(x)
+        out = tf.keras.layers.Add()([out1, out2])
+        return self.dense3(out)
 
 
 # Test training with some deep learning models
@@ -161,6 +247,8 @@ def test_models():
         ('lstm', lstmModel, {}, multi_eeg_config, seq_config),
         ('gru', gruModel, {}, multi_eeg_config, seq_config),
         ('lstm-cnn', clModel, {}, multi_eeg_config, seq_config_less),
+        ('gru-feature', GRUFeatureModel, {}, multi_eeg_config, seq_config),
+        ('lstm-feature', LSTMFeatureModel, {}, multi_eeg_config, seq_config),
     ]
     os.makedirs('models', exist_ok=True)
     for name, klass, args, feat_config, seq_config in deepmodels:
