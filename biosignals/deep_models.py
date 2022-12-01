@@ -3,8 +3,9 @@ import shutil
 from dataclasses import dataclass, replace
 from keras.models import Sequential, load_model
 from keras.layers import Dense, LSTM, GRU, Activation, Conv1D, Flatten, Input  # Dropout, BatchNormalization
+from keras.optimizers import Adam
 from keras import regularizers
-from typing import Any, Dict, cast
+from typing import Any, Dict, Optional, cast
 import biosignals.models as bm
 import biosignals.evaluation as be
 from numpy.random import RandomState
@@ -23,6 +24,7 @@ import tensorflow as tf
 class SequentialConfig:
     num_epochs: int = 30
     batch_size: int = 64
+    clip_norm: Optional[float] = None
     verbose: bool = True
 
 
@@ -75,7 +77,11 @@ class SequentialModel(bm.FeatureModel):
         print(w_T.shape)
         w_tf = tf.convert_to_tensor(w_T, dtype=tf.float64)
         y_true_tf = tf.convert_to_tensor(y_true, dtype=tf.int32)
-        self._model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+        self._model.compile(
+            optimizer=Adam(clipnorm=self._seq_config.clip_norm),
+            loss='binary_crossentropy',
+            metrics=['accuracy'],
+        )
         if self._seq_config.verbose:
             print(self._model.summary())
         self._model.fit(
@@ -243,7 +249,7 @@ def test_models():
     clModel.add(Dense(1, activation='sigmoid'))
 
     deepmodels = [
-        # ('dummy', dummyModel, {}, multi_eeg_config, replace(seq_config, num_epochs=1)),
+        # ('dummy', dummyModel, {}, multi_eeg_config, replace(seq_config, num_epochs=1, clip_norm=1)),
         ('lstm', lstmModel, {}, multi_eeg_config, seq_config),
         ('gru', gruModel, {}, multi_eeg_config, seq_config),
         ('lstm-cnn', clModel, {}, multi_eeg_config, seq_config_less),
