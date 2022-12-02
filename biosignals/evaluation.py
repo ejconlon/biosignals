@@ -26,6 +26,19 @@ class Results:
         tn, _, _, tp = confusion_matrix(y_true=self.y_true, y_pred=self.y_pred_int()).ravel()
         return float(tn + tp) / size
 
+    def precision(self) -> float:
+        _, fp, _, tp = confusion_matrix(y_true=self.y_true, y_pred=self.y_pred_int()).ravel()
+        return float(tp) / (tp + fp)
+
+    def recall(self) -> float:
+        _, _, fn, tp = confusion_matrix(y_true=self.y_true, y_pred=self.y_pred_int()).ravel()
+        return float(tp) / (tp + fn)
+
+    def f1(self) -> float:
+        p = self.precision()
+        r = self.recall()
+        return 2.0 * p * r / (p + r)
+
 
 # Plot classification results (AUC and confusion)
 # If dest_dir is None then will show plots,
@@ -69,7 +82,13 @@ def plot_results(name: str, variant: str, results: Results, dest_dir: Optional[s
 
 # Evaluate performance metrics
 def eval_performance(name: str, variant: str, results: Results, dest_dir: Optional[str] = None):
-    acc = results.accuracy()
-    print(f'{name} {variant} accuracy', acc)
+    d = {
+        'accuracy': results.accuracy(),
+        'precision': results.precision(),
+        'recall': results.recall(),
+        'f1': results.f1()
+    }
+    for k, v in d.items():
+        print(f'{name} {variant} {k}: {v}')
     with open(f'{dest_dir}/{variant}_perf.json', 'w') as f:
-        json.dump({'accuracy': acc}, f, indent=2)
+        json.dump(d, f, indent=2)

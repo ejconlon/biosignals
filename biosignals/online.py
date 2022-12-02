@@ -22,9 +22,9 @@ def extract_onset_truth(
     offsets = np.arange(start=conf.pre_len, stop=total_len - conf.post_len, step=step_ms, dtype=int)
     truth = np.zeros(shape=offsets.shape, dtype=int)
     for onset in onsets:
-        if onset >= total_len:
+        rounded_onset = step_ms * round(float(onset) / step_ms)
+        if rounded_onset >= total_len - conf.post_len:
             break
-        rounded_onset = (onset // step_ms) * step_ms
         index = (rounded_onset - conf.pre_len) // step_ms
         truth[index] = 1
     return (offsets, truth)
@@ -121,9 +121,12 @@ def test_online():
         extractors=extractors,
         use_eeg=False,
     )
-    print('Loading model')
-    model = bm.Model.load('models/rf_multi')
-    predictor = SkPredictor(model, online_conf)
-    y_pred = predict_onsets(predictor, win_conf, offsets, md.eeg)
-    res = be.Results(y_true=y_true, y_pred=y_pred)
-    print(res.accuracy())
+    for name in ['rf_multi']:
+        print('Loading sk model')
+        model_dir = f'models/{name}'
+        model = bm.Model.load(model_dir)
+        predictor = SkPredictor(model, online_conf)
+        y_pred = predict_onsets(predictor, win_conf, offsets, md.eeg)
+        online_res = be.Results(y_true=y_true, y_pred=y_pred)
+        be.eval_performance(name, 'online', online_res, model_dir)
+        be.plot_results(name, 'online', online_res, model_dir)
