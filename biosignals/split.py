@@ -5,6 +5,7 @@ import pandas as pd
 from dataclasses import dataclass
 from random import Random
 from biosignals.dataset import MarkedData
+import functools
 
 # Windowing + dataset splitting
 
@@ -111,6 +112,19 @@ def negative_windows(
                     windows.append(marked.eeg[:, start:end])
                     break
     return np.array(windows, dtype=marked.eeg.dtype)
+
+
+# Returns windows overlapping by step_ms
+def overlap_windows(
+    step_ms: int,
+    marked: MarkedData,
+    conf: WindowConfig,
+    rand: Random
+) -> np.ndarray:
+    total_len = marked.eeg.shape[1]
+    offsets = np.arange(start=conf.pre_len, stop=total_len - conf.post_len, step=step_ms, dtype=int)
+    extents = [(conf.start(o), conf.end(o)) for o in offsets]
+    return np.array([marked.eeg[:, s:e] for (s, e) in extents], dtype=marked.eeg.dtype)
 
 
 # Project a windowed array into a dataframe
@@ -274,3 +288,26 @@ class PartSplitter(Splitter):
         all_dfs = self._concat(dfs)
         all_dfs['label'] = pd.Series(label, index=all_dfs.index, dtype=int)
         return all_dfs
+
+
+# Splitter for online evaluation
+class OnlineSplitter(PartSplitter):
+    def __init__(self, step_ms: int, role_parts: Dict[Role, Set[str]]):
+        super().__init__(role_parts)
+        self._step_ms = step_ms
+
+    def split(
+        self,
+        marked: Dict[str, MarkedData],
+        role: Role,
+        conf: WindowConfig,
+        rand: Random
+    ) -> pd.DataFrame:
+        return self._select(
+            marked,
+            role,
+            conf,
+            rand,
+            functools.partial(overlap_windows, self._step_ms),
+            -1
+        )

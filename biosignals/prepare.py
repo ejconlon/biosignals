@@ -14,6 +14,10 @@ import os
 NUM_CLUSTERS = 32
 
 
+# Number of ms for overlapping windows
+ONLINE_STEP_MS = 50
+
+
 # EEG_SAMPS_PER_MS = 1024 / 1000
 # Since samps/ms is basically 1, we just use round numbers here
 DEFAULT_WINDOW_CONFIG = bs.WindowConfig(
@@ -188,6 +192,78 @@ def prepare_jit():
     )
 
 
+# Prepare holdout set for given participant
+# This is just that participant in a validation set.
+def prepare_holdout_part(part: str):
+    assert part in bd.PARTICIPANTS
+
+    rand = Random(42)
+    extractors = default_extractors()
+
+    splitter = bs.PartSplitter({bs.Role.VALIDATE: set([part])})
+
+    prepare_splits(
+        name=f'holdout_{part}',
+        conf=DEFAULT_WINDOW_CONFIG,
+        rand=rand,
+        splitter=splitter,
+        extractors=extractors,
+        spec={
+            bs.Role.TRAIN: 0,
+            bs.Role.VALIDATE: 1,
+            bs.Role.TEST: 0
+        }
+    )
+
+
+# Ensure holdout set for given participant
+def ensure_holdout_part(part: str):
+    if not has_prepared(f'holdout_{part}'):
+        prepare_holdout_part(part)
+
+
+# Ensure all holdout sets
+def ensure_holdout():
+    for part in bd.PARTICIPANTS:
+        ensure_holdout_part(part)
+
+
+# Ensure online set for given participant
+# This is like the holdout set but with overlapping windows and labels -1.
+def prepare_online_part(step_ms: int, part: str):
+    assert part in bd.PARTICIPANTS
+
+    rand = Random(42)
+    extractors = default_extractors()
+
+    splitter = bs.OnlineSplitter(step_ms, {bs.Role.VALIDATE: set([part])})
+
+    prepare_splits(
+        name=f'online_part_{step_ms}_{part}',
+        conf=DEFAULT_WINDOW_CONFIG,
+        rand=rand,
+        splitter=splitter,
+        extractors=extractors,
+        spec={
+            bs.Role.TRAIN: 0,
+            bs.Role.VALIDATE: 1,
+            bs.Role.TEST: 0
+        }
+    )
+
+
+# Ensure online set for given participant
+def ensure_online_part(step_ms: int, part: str):
+    if not has_prepared(f'online_part_{step_ms}_{part}'):
+        prepare_online_part(step_ms, part)
+
+
+# Same thing
+def ensure_online(step_ms: int):
+    for part in bd.PARTICIPANTS:
+        ensure_online_part(step_ms, part)
+
+
 # Loads dataframes from files/memory
 class FrameLoader:
     def load(self, columns: Optional[List[str]] = None) -> pd.DataFrame:
@@ -233,3 +309,12 @@ def read_prepared(name: str) -> Dict[bs.Role, List[FrameLoader]]:
 def has_prepared(name: str) -> bool:
     dest_dir = os.path.join(f'prepared/{name}')
     return os.path.isdir(dest_dir)
+
+
+# Ensure all of the important prepared datasets
+def ensure_all():
+    ensure_rand()
+    ensure_holdout()
+    ensure_online(ONLINE_STEP_MS)
+    # ensure_holdout_part('01')
+    # ensure_online_part(ONLINE_STEP_MS, '01')
