@@ -315,6 +315,5 @@ def has_prepared(name: str) -> bool:
 def ensure_all():
     ensure_rand()
     ensure_holdout()
-    ensure_online(ONLINE_STEP_MS)
-    # ensure_holdout_part('01')
-    # ensure_online_part(ONLINE_STEP_MS, '01')
+    # Beware: online takes 10G and a few hours to generate!
+    # ensure_online(ONLINE_STEP_MS)
