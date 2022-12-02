@@ -1,8 +1,8 @@
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 import os
 import shutil
 import pickle
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from sklearn.preprocessing import StandardScaler, MaxAbsScaler
 from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
@@ -189,10 +189,35 @@ class Model:
         raise NotImplementedError()
 
     # Shorthand for training and testing on a prepared set
-    def execute(self, prep_name: str, rand: Optional[RandomState]) -> Tuple[be.Results, be.Results]:
+    def execute(
+        self,
+        model_name: str,
+        prep_name: str,
+        rand: Optional[RandomState]
+    ) -> Tuple[be.Results, be.Results]:
+        # Prepare directory
+        name = f'{model_name}_{prep_name}'
+        model_dir = f'models/{name}'
+        if os.path.exists(model_dir):
+            shutil.rmtree(model_dir)
+        os.makedirs(model_dir)
+
+        # Train
         lds = bp.read_prepared(prep_name)
         train_res = self.train_dataframe(lds[bs.Role.TRAIN], lds[bs.Role.VALIDATE], rand)
+
+        # Save and evaluate train
+        self.save(model_dir)
+        be.eval_performance(name, 'train', train_res, model_dir)
+        be.plot_results(name, 'train', train_res, model_dir)
+
+        # Test
         test_res = self.test_dataframe(lds[bs.Role.TEST])
+
+        # Evaluate test
+        be.eval_performance(name, 'test', test_res, model_dir)
+        be.plot_results(name, 'test', test_res, model_dir)
+
         return (train_res, test_res)
 
     # Shorthand for testing on a prepared set
@@ -334,40 +359,36 @@ class SkModel(FeatureModel):
         return be.Results(y_true=y_true, y_pred=y_pred)
 
 
+# A model to train
+@dataclass(frozen=True, eq=False)
+class ModelCase:
+    model_name: str
+    prep_name: str
+    model_fn: Callable[[], Model]
+
+
+SKMODELS = [
+    ModelCase(
+        model_name='rf_multi',
+        prep_name='rand',
+        model_fn=lambda: SkModel(RandomForestClassifier, {}, FeatureConfig(Strategy.MULTI))
+    ),
+]
+
+
 # Test training with some sklearn models
 def test_models():
-    bp.ensure_rand()
     rand = RandomState(42)
-    combined_config = FeatureConfig(Strategy.COMBINED)
-    eeg_config = replace(combined_config, use_eeg=True)
-    multi_config = FeatureConfig(Strategy.MULTI)
-    multi_eeg_config = replace(multi_config, use_eeg=True)
-    multi_pca_config = replace(multi_config, use_pca=True)
-    skmodels = [
-        ('rf_combined', RandomForestClassifier, {}, combined_config),
-        ('rf_multi', RandomForestClassifier, {}, multi_config),
-        ('rf_multi_pca', RandomForestClassifier, {}, multi_pca_config),
-        # ('rf_eeg_test', RandomForestClassifier, {}, eeg_config),
-        # ('rf_eeg_test_multi', RandomForestClassifier, {}, multi_eeg_config),
-    ]
-    os.makedirs('models', exist_ok=True)
-    for name, klass, args, feat_config in skmodels:
-        print(f'Training model {name} {klass} {args} {feat_config}')
-        model_dir = f'models/{name}'
-        if os.path.exists(model_dir):
-            shutil.rmtree(model_dir)
-        os.makedirs(model_dir)
-        model = SkModel(klass, args, feat_config)
-        train_res, test_res = model.execute('rand', rand)
-        model.save(model_dir)
-        be.eval_performance(name, 'train', train_res, model_dir)
-        be.eval_performance(name, 'test', test_res, model_dir)
-        be.plot_results(name, 'train', train_res, model_dir)
-        be.plot_results(name, 'test', test_res, model_dir)
+    for case in SKMODELS:
+        print(f'Training model {case.model_name} {case.prep_name}')
+        model = case.model_fn()
+        model.execute(case.model_name, case.prep_name, rand)
 
 
+# Test loading a model
 def test_model_load():
-    for name in ['rf_combined']:
+    for model_name, prep_name in [('rf_combined', 'rand')]:
+        name = f'{model_name}_{prep_name}'
         model = SkModel.load(f'models/{name}')
-        test_res = model.execute_test('rand')
+        test_res = model.execute_test(prep_name)
         be.eval_performance(name, 'test', test_res, '/tmp')

@@ -1,5 +1,3 @@
-import os
-import shutil
 from dataclasses import dataclass, replace
 from keras.models import Sequential, load_model
 from keras.layers import Dense, LSTM, GRU, Activation, Conv1D, Flatten, Input  # Dropout, BatchNormalization
@@ -249,27 +247,17 @@ def test_models():
     clModel.add(Dense(1, activation='sigmoid'))
 
     deepmodels = [
-        # ('dummy', dummyModel, {}, multi_eeg_config, replace(seq_config, num_epochs=1, clip_norm=1)),
-        ('lstm', lstmModel, {}, multi_eeg_config, seq_config),
-        ('gru', gruModel, {}, multi_eeg_config, seq_config),
-        ('lstm-cnn', clModel, {}, multi_eeg_config, seq_config_less),
-        ('gru-feature', GRUFeatureModel, {}, multi_eeg_config, seq_config),
-        ('lstm-feature', LSTMFeatureModel, {}, multi_eeg_config, seq_config),
+        ('dummy', 'rand', dummyModel, {}, multi_eeg_config, replace(seq_config, num_epochs=1)),
+        # ('lstm', 'rand', lstmModel, {}, multi_eeg_config, seq_config),
+        # ('gru', 'rand', gruModel, {}, multi_eeg_config, seq_config),
+        # ('lstm-cnn', 'rand', clModel, {}, multi_eeg_config, seq_config_less),
+        # ('gru-feature', 'rand', GRUFeatureModel, {}, multi_eeg_config, seq_config),
+        # ('lstm-feature', 'rand', LSTMFeatureModel, {}, multi_eeg_config, seq_config),
     ]
-    os.makedirs('models', exist_ok=True)
-    for name, klass, args, feat_config, seq_config in deepmodels:
-        print(f'Training model {name} {klass} {args} {feat_config} {seq_config}')
-        model_dir = f'models/{name}'
-        if os.path.exists(model_dir):
-            shutil.rmtree(model_dir)
-        os.makedirs(model_dir)
+    for model_name, prep_name, klass, args, feat_config, seq_config in deepmodels:
+        print(f'Training model {model_name} {prep_name} {klass} {args} {feat_config} {seq_config}')
         model = SequentialModel(klass, args, feat_config, seq_config)
-        train_res, test_res = model.execute('rand', rand)
-        model.save(model_dir)
-        be.eval_performance(name, 'train', train_res, model_dir)
-        be.eval_performance(name, 'test', test_res, model_dir)
-        be.plot_results(name, 'train', train_res, model_dir)
-        be.plot_results(name, 'test', test_res, model_dir)
+        model.execute(model_name, prep_name, rand)
 
 
 def test_model_load():

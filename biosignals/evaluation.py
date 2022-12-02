@@ -1,11 +1,53 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Dict, Optional
 import sklearn.metrics as metrics
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
-from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 import json
+
+
+@dataclass(frozen=True)
+class Confusion:
+    tn: int
+    fp: int
+    fn: int
+    tp: int
+
+    @property
+    def size(self):
+        return self.tn + self.fp + self.fn + self.tp
+
+    @property
+    def accuracy(self) -> float:
+        return float(self.tn + self.tp) / self.size
+
+    @property
+    def precision(self) -> float:
+        return float(self.tp) / (self.tp + self.fp)
+
+    @property
+    def recall(self) -> float:
+        return float(self.tp) / (self.tp + self.fn)
+
+    @property
+    def f1(self) -> float:
+        p = self.precision
+        r = self.recall
+        return 2.0 * p * r / (p + r)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'size': self.size,
+            'tn': self.tn,
+            'fp': self.fp,
+            'fn': self.fn,
+            'tp': self.tp,
+            'accuracy': self.accuracy,
+            'precision': self.precision,
+            'recall': self.recall,
+            'f1': self.f1,
+        }
 
 
 # Results (actual classes vs predicted classes)
@@ -21,23 +63,9 @@ class Results:
         else:
             return np.rint(self.y_pred).astype(int)
 
-    def accuracy(self) -> float:
-        size = self.y_true.shape[0]
-        tn, _, _, tp = confusion_matrix(y_true=self.y_true, y_pred=self.y_pred_int()).ravel()
-        return float(tn + tp) / size
-
-    def precision(self) -> float:
-        _, fp, _, tp = confusion_matrix(y_true=self.y_true, y_pred=self.y_pred_int()).ravel()
-        return float(tp) / (tp + fp)
-
-    def recall(self) -> float:
-        _, _, fn, tp = confusion_matrix(y_true=self.y_true, y_pred=self.y_pred_int()).ravel()
-        return float(tp) / (tp + fn)
-
-    def f1(self) -> float:
-        p = self.precision()
-        r = self.recall()
-        return 2.0 * p * r / (p + r)
+    def confusion(self) -> Confusion:
+        tn, fp, fn, tp = confusion_matrix(y_true=self.y_true, y_pred=self.y_pred_int()).ravel()
+        return Confusion(tn=int(tn), fp=int(fp), fn=int(fn), tp=int(tp))
 
 
 # Plot classification results (AUC and confusion)
@@ -76,18 +104,10 @@ def plot_results(name: str, variant: str, results: Results, dest_dir: Optional[s
     else:
         fig.savefig(f'{dest_dir}/{variant}_conf.png')
 
-    print(cm)
-    print(precision_recall_fscore_support(labels, predictions_int, average='macro'))
-
 
 # Evaluate performance metrics
 def eval_performance(name: str, variant: str, results: Results, dest_dir: Optional[str] = None):
-    d = {
-        'accuracy': results.accuracy(),
-        'precision': results.precision(),
-        'recall': results.recall(),
-        'f1': results.f1()
-    }
+    d = results.confusion().to_dict()
     for k, v in d.items():
         print(f'{name} {variant} {k}: {v}')
     with open(f'{dest_dir}/{variant}_perf.json', 'w') as f:
