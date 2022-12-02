@@ -36,20 +36,11 @@ def load_single_features(
     return (feat_columns, 'label', df)
 
 
-# Load/transform features for multi-channel classification
-# Row-wise is a horrible way to do it but I don't know a way to do the groupby correctly.
-def load_multi_features(
-    loader: bp.FrameLoader,
+def process_multi_features(
+    feat_columns: List[str],
     n_clusters: int,
-    use_eeg: bool
+    df: pd.DataFrame
 ) -> Tuple[List[str], str, pd.DataFrame]:
-    assert n_clusters > 0
-    feat_columns = list(FEATURES)
-    if use_eeg:
-        feat_columns.append('eeg')
-    columns = list(feat_columns)
-    columns.extend(['cluster_id', 'window_id', 'part', 'label'])
-    df = loader.load(columns)
     # Find all unique (window_id, part) in the dataframe (bad way to do it)
     part_windows: Dict[Tuple[int, str], int] = {}
     for _, row in df.iterrows():
@@ -94,6 +85,23 @@ def load_multi_features(
     new_series['label'] = pd.Series(conc_labels, dtype=int)
     new_df = pd.DataFrame.from_dict(new_series)
     return (new_feats, 'label', new_df)
+
+
+# Load/transform features for multi-channel classification
+# Row-wise is a horrible way to do it but I don't know a way to do the groupby correctly.
+def load_multi_features(
+    loader: bp.FrameLoader,
+    n_clusters: int,
+    use_eeg: bool
+) -> Tuple[List[str], str, pd.DataFrame]:
+    assert n_clusters > 0
+    feat_columns = list(FEATURES)
+    if use_eeg:
+        feat_columns.append('eeg')
+    columns = list(feat_columns)
+    columns.extend(['cluster_id', 'window_id', 'part', 'label'])
+    df = loader.load(columns)
+    return process_multi_features(feat_columns, n_clusters, df)
 
 
 # Split dataframe into (normal features, extra features, label) arrays
