@@ -3,7 +3,7 @@ from keras.models import Sequential, load_model
 from keras.layers import Dense, LSTM, GRU, Activation, Conv1D, Flatten, Input  # Dropout, BatchNormalization
 from keras.optimizers import Adam
 from keras import regularizers
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, List, Optional, cast
 import biosignals.models as bm
 import biosignals.evaluation as be
 from numpy.random import RandomState
@@ -154,7 +154,6 @@ class SequentialModel(bm.FeatureModel):
 
 
 class GRUFeatureModel(tf.keras.Model):
-
     def __init__(self):
         super(GRUFeatureModel, self).__init__()
         self.gru1 = GRU(512, input_shape=(750, 32), return_sequences=True)
@@ -176,7 +175,6 @@ class GRUFeatureModel(tf.keras.Model):
 
 
 class LSTMFeatureModel(tf.keras.Model):
-
     def __init__(self):
         super(LSTMFeatureModel, self).__init__()
         self.lstm1 = LSTM(512, input_shape=(750, 32), return_sequences=True)
@@ -197,10 +195,11 @@ class LSTMFeatureModel(tf.keras.Model):
         return self.dense3(out)
 
 
-# Test training with some deep learning models
-def test_models():
-    bp.ensure_rand()
-    rand = RandomState(42)
+MODELS = []
+
+
+# NOTE: When ready to test with holdouts, change list to bp.STANDARD_PREP_NAMES
+for prep_name in ['rand']:
     multi_config = bm.FeatureConfig(bm.Strategy.MULTI)
     multi_eeg_config = bm.FeatureConfig(strategy=bm.Strategy.MULTI, use_eeg=True)
     multi_pca_config = replace(multi_config, use_pca=True)
@@ -246,18 +245,29 @@ def test_models():
     clModel.add(Dense(64))
     clModel.add(Dense(1, activation='sigmoid'))
 
-    deepmodels = [
-        ('dummy', 'rand', dummyModel, {}, multi_eeg_config, replace(seq_config, num_epochs=1)),
+    def mk_dummy_model():
+        return SequentialModel(dummyModel, {}, multi_eeg_config, replace(seq_config, num_epochs=1))
+
+    MODELS.extend([
+        bm.ModelCase('dummy', prep_name, mk_dummy_model),
         # ('lstm', 'rand', lstmModel, {}, multi_eeg_config, seq_config),
         # ('gru', 'rand', gruModel, {}, multi_eeg_config, seq_config),
         # ('lstm-cnn', 'rand', clModel, {}, multi_eeg_config, seq_config_less),
         # ('gru-feature', 'rand', GRUFeatureModel, {}, multi_eeg_config, seq_config),
         # ('lstm-feature', 'rand', LSTMFeatureModel, {}, multi_eeg_config, seq_config),
-    ]
-    for model_name, prep_name, klass, args, feat_config, seq_config in deepmodels:
-        print(f'Training model {model_name} {prep_name} {klass} {args} {feat_config} {seq_config}')
-        model = SequentialModel(klass, args, feat_config, seq_config)
-        model.execute(model_name, prep_name, rand)
+    ])
+
+
+# Test training with some deep learning models
+def test_models(models: Optional[List[bm.ModelCase]] = None):
+    if models is None:
+        models = MODELS
+    bp.ensure_all()
+    for case in models:
+        print(f'Training model {case.model_name} {case.prep_name}')
+        rand = RandomState(42)
+        model = case.model_fn()
+        model.execute(case.model_name, case.prep_name, rand)
 
 
 def test_model_load():

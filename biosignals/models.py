@@ -371,17 +371,17 @@ def mk_rf_model() -> Model:
     return SkModel(RandomForestClassifier, {}, FeatureConfig(Strategy.MULTI))
 
 
-SKMODELS = []
+MODELS = []
 
 
 for prep_name in bp.STANDARD_PREP_NAMES:
-    SKMODELS.append(ModelCase('rf_multi', prep_name, mk_rf_model))
+    MODELS.append(ModelCase('rf_multi', prep_name, mk_rf_model))
 
 
 # Test training with some sklearn models
 def test_models(models: Optional[List[ModelCase]] = None):
     if models is None:
-        models = SKMODELS
+        models = MODELS
     bp.ensure_all()
     for case in models:
         print(f'Training model {case.model_name} {case.prep_name}')
