@@ -195,66 +195,96 @@ class LSTMFeatureModel(tf.keras.Model):
         return self.dense3(out)
 
 
-MODELS = []
+FEAT_CONFIG = bm.FeatureConfig(strategy=bm.Strategy.MULTI, use_eeg=True)
+SEQ_CONFIG = SequentialConfig(num_epochs=30, batch_size=64, verbose=True)
 
 
-# NOTE: When ready to test with holdouts, change list to bp.STANDARD_PREP_NAMES
-for prep_name in ['rand']:
-    multi_config = bm.FeatureConfig(bm.Strategy.MULTI)
-    multi_eeg_config = bm.FeatureConfig(strategy=bm.Strategy.MULTI, use_eeg=True)
-    multi_pca_config = replace(multi_config, use_pca=True)
-    seq_config = SequentialConfig(num_epochs=30, batch_size=64, verbose=True)
-    seq_config_less = replace(seq_config, num_epochs=10)
-
-    # Create dummy model (for testing only)
+# Create dummy model (for testing only)
+def mk_dummy_model():
     dummyModel = Sequential()
     dummyModel.add(LSTM(1, input_shape=(750, 32)))
     dummyModel.add(Dense(1, activation='sigmoid'))
+    return SequentialModel(
+        dummyModel, {}, FEAT_CONFIG, replace(SEQ_CONFIG, num_epochs=1))
 
-    # Create LSTM model
+
+# Create LSTM model
+def mk_lstm_model():
     lstmModel = Sequential()
     lstmModel.add(LSTM(512, input_shape=(750, 32), return_sequences=True))
     lstmModel.add(Activation("relu"))
     lstmModel.add(LSTM(256))
     lstmModel.add(Dense(1, activation='sigmoid'))
+    return SequentialModel(
+        lstmModel, {}, FEAT_CONFIG, SEQ_CONFIG)
 
-    # Create GRU model
+
+# Create GRU model
+def mk_gru_model():
     gruModel = Sequential()
     gruModel.add(GRU(512, input_shape=(750, 32), return_sequences=True))
     gruModel.add(Activation("relu"))
     gruModel.add(GRU(256))
     gruModel.add(Dense(1, activation='sigmoid'))
+    return SequentialModel(
+        gruModel, {}, FEAT_CONFIG, SEQ_CONFIG)
 
-    # Create CNN-LSTM model
+
+# Create LSTM-CNN model
+def mk_lstm_cnn_model():
     clModel = Sequential()
     clModel.add(Input(shape=(750, 32)))     # (None, 750, 32))
-
-    clModel.add(LSTM(256,
-                     return_sequences=True,
-                     activation="relu",
-                     dropout=0.1,
-                     kernel_regularizer=regularizers.L2(0.001)))
-    clModel.add(LSTM(256,
-                     return_sequences=True,
-                     activation="relu"))
+    clModel.add(
+        LSTM(
+            256,
+            return_sequences=True,
+            activation="relu",
+            dropout=0.1,
+            kernel_regularizer=regularizers.L2(0.001)
+        )
+    )
+    clModel.add(
+        LSTM(
+            256,
+            return_sequences=True,
+            activation="relu"
+        )
+    )
     clModel.add(Dense(128))
-    clModel.add(Conv1D(filters=64,
-                       kernel_size=1,
-                       strides=1))
+    clModel.add(
+        Conv1D(
+            filters=64,
+            kernel_size=1,
+            strides=1
+        )
+    )
     clModel.add(Flatten())
     clModel.add(Dense(64))
     clModel.add(Dense(1, activation='sigmoid'))
+    return SequentialModel(
+        clModel, {}, FEAT_CONFIG, replace(SEQ_CONFIG, num_epochs=10))
 
-    def mk_dummy_model():
-        return SequentialModel(dummyModel, {}, multi_eeg_config, replace(seq_config, num_epochs=1))
 
+def mk_gru_feature_model():
+    return SequentialModel(GRUFeatureModel, {}, FEAT_CONFIG, SEQ_CONFIG)
+
+
+def mk_lstm_feature_model():
+    return SequentialModel(LSTMFeatureModel, {}, FEAT_CONFIG, SEQ_CONFIG)
+
+
+MODELS = []
+
+
+# NOTE: When ready to test with holdouts, change list to bp.STANDARD_PREP_NAMES
+for prep_name in ['rand']:
     MODELS.extend([
         bm.ModelCase('dummy', prep_name, mk_dummy_model),
-        # ('lstm', 'rand', lstmModel, {}, multi_eeg_config, seq_config),
-        # ('gru', 'rand', gruModel, {}, multi_eeg_config, seq_config),
-        # ('lstm-cnn', 'rand', clModel, {}, multi_eeg_config, seq_config_less),
-        # ('gru-feature', 'rand', GRUFeatureModel, {}, multi_eeg_config, seq_config),
-        # ('lstm-feature', 'rand', LSTMFeatureModel, {}, multi_eeg_config, seq_config),
+        # bm.ModelCase('lstm', prep_name, mk_lstm_model),
+        # bm.ModelCase('gru', prep_name, mk_gru_model),
+        # bm.ModelCase('lstm-cnn', prep_name, mk_lstm_cnn_model),
+        # bm.ModelCase('gru-feature', prep_name, mk_gru_feature_model),
+        # bm.ModelCase('lstm-feature', prep_name, mk_lstm_feature_model),
     ])
 
 
