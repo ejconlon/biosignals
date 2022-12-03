@@ -367,20 +367,25 @@ class ModelCase:
     model_fn: Callable[[], Model]
 
 
-SKMODELS = [
-    ModelCase(
-        model_name='rf_multi',
-        prep_name='rand',
-        model_fn=lambda: SkModel(RandomForestClassifier, {}, FeatureConfig(Strategy.MULTI))
-    ),
-]
+def mk_rf_model() -> Model:
+    return SkModel(RandomForestClassifier, {}, FeatureConfig(Strategy.MULTI))
+
+
+SKMODELS = []
+
+
+for prep_name in bp.STANDARD_PREP_NAMES:
+    SKMODELS.append(ModelCase('rf_multi', prep_name, mk_rf_model))
 
 
 # Test training with some sklearn models
-def test_models():
-    rand = RandomState(42)
-    for case in SKMODELS:
+def test_models(models: Optional[List[ModelCase]] = None):
+    if models is None:
+        models = SKMODELS
+    bp.ensure_all()
+    for case in models:
         print(f'Training model {case.model_name} {case.prep_name}')
+        rand = RandomState(42)
         model = case.model_fn()
         model.execute(case.model_name, case.prep_name, rand)
 

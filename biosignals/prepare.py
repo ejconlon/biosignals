@@ -10,6 +10,14 @@ import os
 
 # Full data preparation
 
+# Prep names
+HOLDOUT_PREP_NAMES = [f'holdout_{p}' for p in bd.PARTICIPANTS]
+ONLINE_PREP_NAMES = [f'online_{p}' for p in bd.PARTICIPANTS]
+STANDARD_PREP_NAMES = ['rand']
+# Comment this out if you don't want to train holdouts by default
+STANDARD_PREP_NAMES.extend(HOLDOUT_PREP_NAMES)
+
+
 # Number of clusters - if this changes, you have to regen all data
 NUM_CLUSTERS = 32
 
@@ -203,7 +211,7 @@ def prepare_holdout_part(part: str):
     splitter = bs.PartSplitter({bs.Role.VALIDATE: set([part])})
 
     prepare_splits(
-        name=f'holdout_{part}',
+        name=f'holdout_part_{part}',
         conf=DEFAULT_WINDOW_CONFIG,
         rand=rand,
         splitter=splitter,
@@ -218,7 +226,7 @@ def prepare_holdout_part(part: str):
 
 # Ensure holdout set for given participant
 def ensure_holdout_part(part: str):
-    if not has_prepared(f'holdout_{part}'):
+    if not has_prepared(f'holdout_part_{part}'):
         prepare_holdout_part(part)
 
 
@@ -291,8 +299,33 @@ class MemoryFrameLoader(FrameLoader):
             return self.frame[columns]
 
 
-# Read prepared data from a directory
+# Read prepared data from a directory (smart)
 def read_prepared(name: str) -> Dict[bs.Role, List[FrameLoader]]:
+    xs = name.split('_')
+    category = xs[0]
+    if (len(xs) == 2 and xs[0] == 'holdout') or (len(xs) == 3 and xs[0] == 'online'):
+        part = xs[1] if category == 'holdout' else xs[2]
+        category = 'holdout_part' if xs[0] == 'holdout' else f'online_part_{xs[1]}'
+        train_loaders = []
+        test_loaders = []
+        for p in bd.PARTICIPANTS:
+            part_name = f'{category}_{p}'
+            d = read_prepared_raw(part_name)
+            if p == part:
+                test_loaders.extend(d[bs.Role.VALIDATE])
+            else:
+                train_loaders.extend(d[bs.Role.VALIDATE])
+        return {
+            bs.Role.TRAIN: train_loaders,
+            bs.Role.VALIDATE: [],
+            bs.Role.TEST: test_loaders
+        }
+    else:
+        return read_prepared_raw(name)
+
+
+# Read prepared data from a directory (raw)
+def read_prepared_raw(name: str) -> Dict[bs.Role, List[FrameLoader]]:
     dest_dir = os.path.join(f'prepared/{name}')
     assert os.path.isdir(dest_dir)
     fns = sorted(os.listdir(dest_dir))
@@ -305,8 +338,18 @@ def read_prepared(name: str) -> Dict[bs.Role, List[FrameLoader]]:
     return d
 
 
-# Check if there is prepared data under the given name
+# Check if there is prepared data under the given name (smart)
 def has_prepared(name: str) -> bool:
+    xs = name.split('_')
+    if (len(xs) == 2 and xs[0] == 'holdout') or (len(xs) == 3 and xs[0] == 'online'):
+        category = 'holdout_part' if xs[0] == 'holdout' else f'online_part_{xs[1]}'
+        return all(has_prepared_raw(f'{category}_{p}') for p in bd.PARTICIPANTS)
+    else:
+        return has_prepared_raw(name)
+
+
+# Check if there is prepared data under the given name (raw)
+def has_prepared_raw(name: str) -> bool:
     dest_dir = os.path.join(f'prepared/{name}')
     return os.path.isdir(dest_dir)
 
