@@ -38,15 +38,18 @@ DEFAULT_WINDOW_CONFIG = bs.WindowConfig(
 
 # This comes from https://mne.tools/dev/auto_examples/time_frequency/time_frequency_global_field_power.html
 FREQ_BANDS = [
+    bf.Band('delta_power', 1, 3),
     bf.Band('theta_power', 4, 7),
     bf.Band('alpha_power', 8, 12),
     bf.Band('beta_power', 13, 25),
     bf.Band('gamma_power', 30, 45)
 ]
 
+# Number of segments for band power
+NUM_SEGMENTS = 3
 
 # Feature extractors for band power
-FREQ_EXTRACTORS = [bf.BandPowerExtractor(FREQ_BANDS)]
+FREQ_EXTRACTORS = [bf.SegmentBandPowerExtractor(NUM_SEGMENTS, FREQ_BANDS)]
 
 
 # Feature extractors to use by default
@@ -154,7 +157,7 @@ def prepare_rand():
     conf = DEFAULT_WINDOW_CONFIG
     perms = bs.generate_perms(bd.PARTICIPANTS, rand)
     splitter = bs.RandomSplitter(
-        perms, {bs.Role.TRAIN: 80, bs.Role.VALIDATE: 10, bs.Role.TEST: 10})
+        perms, {bs.Role.TRAIN: 90, bs.Role.VALIDATE: 0, bs.Role.TEST: 10})
     extractors = default_extractors()
 
     prepare_splits(
