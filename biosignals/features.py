@@ -94,7 +94,7 @@ class SegmentBandPowerExtractor(Extractor):
                         seg_name = b.name
                     else:
                         seg_name = f'{b.name}_s{seg_num}'
-                    power = self._power(f, Pxx, b.freq_low, b.freq_high)
+                    power = self._power(f, Pxx, b.freq_low, b.freq_high + 1)
                     if seg_name not in values:
                         values[seg_name] = []
                     values[seg_name].append(power)

@@ -46,7 +46,7 @@ FREQ_BANDS = [
 ]
 
 # Number of segments for band power
-NUM_SEGMENTS = 3
+NUM_SEGMENTS = 1
 
 # Feature extractors for band power
 FREQ_EXTRACTORS = [bf.SegmentBandPowerExtractor(NUM_SEGMENTS, FREQ_BANDS)]
