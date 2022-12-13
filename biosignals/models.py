@@ -16,10 +16,17 @@ from numpy.random import RandomState
 from enum import Enum
 
 
-FEATURES = [
-    'x', 'y', 'z',
-    'theta_power', 'alpha_power', 'beta_power', 'gamma_power'
-]
+BAND_FEATURES = ['theta_power', 'alpha_power', 'beta_power', 'gamma_power']
+FEATURES = ['x', 'y', 'z']
+
+
+# Add exactly the segmented band features we use to the feature set
+if bp.NUM_SEGMENTS == 1:
+    FEATURES.extend(BAND_FEATURES)
+else:
+    for seg_num in range(bp.NUM_SEGMENTS):
+        for feat in BAND_FEATURES:
+            FEATURES.append(f'{feat}_s{seg_num}')
 
 
 # Load/transform features for single-channel classification

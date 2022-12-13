@@ -10,9 +10,6 @@
 % Use this instead of caption to remove acmart description warnings
 \newcommand{\mycaption}[1]{\Description{#1}\caption{#1}}
 
-% Project name
-% \newcommand{\biosignals}{\textit{Biosignals}\xspace}
-
 % For highlighting some texts
 % \newcommand{\red}[1]{\textcolor{red}{#1}}
 
@@ -26,8 +23,7 @@
 \acmDOI{N/A}
 \acmBooktitle{N/A}
 
-\title{Title here}
-\subtitle{Subtitle here}
+\title{Speech Onset Detection using sEEG}
 \author{Jennie Chen}
 \author{Kevin Jin}
 \author{Eric Conlon}
@@ -38,7 +34,7 @@
 
 \begin{abstract}
 
-Abstract ...
+In this project, we construct models of speech onset learned from sEEG signals. We compare conventional ML against deep learning on the task and in both cases perform binary classification with better than random chance. There were many challenges in working with the sEEG dataset we used, and we wonder if the benefits of high signal-to-noise ratio outweigh the problems of generalizability.
 
 \end{abstract}
 
@@ -46,7 +42,47 @@ Abstract ...
 
 \section{Introduction}
 
-Introduction... We're using such and such dataset... \cite{verwoert2022dataset}
+Speech-related brain-computer interfaces (BCIs) can provide new communication strategies for people with speaking disabilities. One popular research topic in this area is direct speech reconstruction, but it is difficult to approach this due to the high dimensionality of the input data and of the intermediate representations as well as the difficulty with reconstructing intelligible speech waveforms. \cite{saha2019deep} A simpler problem is to predict the onset of intended speech. This could be used for voice-handicapped persons to be able to indicate their intent to communicate. For instance, one practical use would be to control/toggle on a light bulb when a patient is trying to indicate their needs to a caretaker.
+
+Different brain signal monitoring modalities have been used in BCI, such as surface electroencephalography (EEG), electrocorticography (ECoG), etc. \cite{herff2020potential} In comparison, ECoG has a much higher spatial and temporal resolution than EEG. \cite{parvizi2018promises} Since ECoG is measured directly on the cortex, it also contains high gamma band activity, which is involved in speech production. \cite{herff2020potential} Due to the clinical use of ECoG in epilepsy monitoring, this type of signal is highly localized. Researchers have been successful in synthesizing speech through ECoG signals measured in the ventral sensorimotor cortex as activity in this brain region is related to articulatory movements. \cite{chartier2018encoding, anumanchipalli2018intelligible} In recent years stereotactic electroencephalography (sEEG) signals have emerged in BCI studies. The acquisition of sEEG signals requires penetrating depth electrodes that can obtain data from even deeper brain structures than ECoG. \cite{herff2020potential} sEEG has a signal-to-noise ratio of up to 100 times higher than surface EEG, which makes it a very attractive signal source. It is also slightly less invasive and has fewer surgical complications than ECoG grid implantation. \cite{herff2020potential}
+
+\section{Methods}
+
+\subsection{Data}
+
+It is extremely difficult to collect sEEG signals, since it requires surgical implantation of electrodes in a patient's brain (which, of course, is beyond the scope of this project). As such we rely on a publicly-available dataset of spoken word prompts with simultaneous audio and sEEG recordings. \cite{verwoert2022dataset} This dataset represents experimental results from 10 patients speaking 100 words (from a corpus of Dutch words) as prompted. Between words, patients focused on a fixation cross. The location of intracranial electrodes varies between patients, but they are labeled with anatomical location. There are a total of 1103 recorded electrode signals with between 54 and 127 per patient. This dataset is relatively small, so it is challenging to apply learning techniques that require many examples to converge. However, there is reason to believe that the signal content of the dataset is good: the researchers who assembled the dataset were able to reconstruct an audio spectrogram in log-mel space with a linear transformation of the sEEG spectrogram.
+
+\subsection{Clustering channels}
+
+We find that predicting speech onsets with single-channel observations is unreliable, so we focus our efforts on multi-channel observations. However, we must overcome a significant disadvantage of intracranial EEG: the variability of probe placements between participants. Contrast this to surface EEG, in which the spatial arrangement of channels is fixed by the particular hardware used. This dataset contains spatial coordinates and rough functional areas for each channel collected from each participant, but it is not clear how to group these channels for analysis. Some functional areas are over- or underrepresented across participants, and the total number of channels varies. It might be possible to incorporate all channels' data in a single observation for certain types of models with hidden states, but we prefer to try a principled and consistent method for grouping channels. With a chosen a number of \textit{clusters} (32) we use Bisecting K-Means to derive spatial positions for these clusters from the set of positions of all channels across all participants. Then for each participant and each cluster we assign the channel from that participant that is closest to the cluster centroid (and has not been previously assigned). With these assignments we are able to work with an ordered list of channels for each participant where channels in corresponding positions have some spatial similarity. We also include spatial position in our features to allow models to compensate for the approximate nature of our assignments.
+
+\subsection{Task}
+
+Our primary task is to predict speech onset from sEEG signals. Previous work has successfully performed this ``sentence spotting'' (SS) task with a high level of accuracy and precision on EEG datasets. \cite{sakthi2021keyword} We follow their model: intervals from 500ms before and 250ms after sentence onset are labeled 1 and other intervals 0. With this dataset, there are approximately 110,000 unique positive examples, but of course there are many correlations, as they are drawn from a limited pool of speakers and words. In practice there are far fewer positive examples, as multi-channel classification is virtually required.
+
+\subsection{Signal processing}
+
+The dataset contains sEEG signals sampled at 1024 Hz. These sampling rates are more than adequate (brain waves are generally quoted in the range of 1-100 Hz and above). In their reconstruction experiment \cite{verwoert2022dataset}, researchers post-processed their sEEG signals by bandpass-filtering between 70-170 Hz and bandstop-filtering around 50 Hz. Though SS with deep learning \cite{sakthi2021keyword} can directly operate on the time domain signal, we calculate some frequency domain features for use with baseline learning methods. These features include band power for four common frequency ranges used in EEG analysis: theta (4-7 Hz), alpha (8-12 Hz), beta (13-25 Hz), and gamma (30-45 Hz).
+
+\subsection{Data preparation}
+
+While the dataset has markers for stimuli, it does not have any for speech onset. We create markers in the form of timestamps for each of the onsets. Initially, we attempted to use librosa's onset detection function directly on each of the speech signals, but realized that the audio is littered with noise caused by patient movement. We also tried applying a bandpass filter for the natural frequency range of human voice, but this did not seem to help with the onset detection. Our final solution was to first leverage the structure of the audio data, which is that each word is shown to the patient for 2 seconds, followed by 1 second of fixation, so we assume that the onset can only occur after the word is shown and that it will end before the fixation period. We iterate over every stimulus window, apply Viterbi decoding to separate silence and non-silence regions, and then apply librosa's onset detection function. Each of these onsets is saved as a marker in .aiff format. There are however a few instances where our assumptions do not hold. For example, a few words are pronounced during the fixation period. In these edge cases, we save a list of the words that could not be detected and manually mark the onsets in audio editing software.
+
+With speech onset marks, we derive start and end points for positive windows of 750ms. For negative examples, we randomly choose onsets at least 500ms away from any speech onset. With this scheme we ensure a balance of positive and negative examples as well as complete channel data for every window. These examples are augmented with cluster assigments and frequency-domain features, and they are saved for quick access in model training and testing.
+
+We run our experiments on several prepared datasets: One is a randomly selected 80:10:10 train/validation/test split across all participants and all times. (We realize that we are biasing our model by learning hidden temporal variables, but we found it necessary to use as many samples as possible for training.) The rest are 1-participant holdout sets used to test generalizability.
+
+\subsection{Learning model}
+
+[NOTE This is mostly just copied over - needs a serious overhaul - mention that single channel classification basically doesn't work at all, nor do SVC and GNB - RF multi-channel does well.]
+
+We apply the sentence spotter gated-recurrent unit (GRU) model developed by Sakthi et al. \cite{sakthi2021keyword} on the dataset in Verwoert et al. \cite{verwoert2022dataset} to perform a binary classification task to identify whether a given window of sEEG signal contains the onset of speech. The GRU model was shown to have the best performance in detecting speech onsets, compared to the other model architectures (Long Short-Term Memory (LSTM) and a naive Bayes) that the authors explored. \cite{sakthi2021keyword} The GRU model consists of 2 GRU layers and a fully-connected layer, with a sigmoid activation function to perform the prediction. \cite{sakthi2021keyword} They trained the model for 10 epochs using a binary cross-entropy loss function, Adam optimizer and a batch size of 64. We will use this model as a starting point and adjust the hyperparameters depending on the performance on our validation dataset. We may also explore other deep learning neural network architectures, such as a LSTM model \cite{sakthi2021keyword} or transformers [Q]. Various CNN approaches have also been applied to EEG data, using temporal and/or spatial (across different channels) convolutions directly on the pre-processed EEG data, or using the extracted features from each window slice as inputs to the CNN [X][Y][Z]. To train our deep learning models, we will split the dataset into training, validation, and test data using a 8:1:1 split ratio across our 10 participants (to assess the generalizability of our models on different people). For our baseline model, we will compare our deep learning model(s) against a traditional machine learning model, such as a support vector machine (SVM) [R].
+
+As a baseline, we train a random forest classifier on band power features.
+
+\section{Results}
+
+Etc...
 
 \section{Conclusion}
 
