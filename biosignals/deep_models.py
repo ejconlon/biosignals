@@ -2,6 +2,7 @@ from dataclasses import dataclass, replace
 from keras.models import Sequential, load_model
 from keras.layers import Dense, LSTM, GRU, Activation, Conv1D, Flatten, Input  # Dropout, BatchNormalization
 from keras.optimizers import Adam
+from keras.initializers import GlorotNormal
 from keras import regularizers
 from typing import Any, Dict, List, Optional, cast
 import biosignals.models as bm
@@ -240,6 +241,7 @@ def mk_lstm_cnn_model():
             return_sequences=True,
             activation="relu",
             dropout=0.1,
+            kernel_initializer=GlorotNormal(),
             kernel_regularizer=regularizers.L2(0.001)
         )
     )
@@ -247,22 +249,32 @@ def mk_lstm_cnn_model():
         LSTM(
             256,
             return_sequences=True,
+            kernel_initializer=GlorotNormal(),
             activation="relu"
         )
     )
-    clModel.add(Dense(128))
+    clModel.add(
+        Dense(128,
+        kernel_initializer=GlorotNormal()
+        )
+    )
     clModel.add(
         Conv1D(
             filters=64,
             kernel_size=1,
-            strides=1
+            strides=1,
+            kernel_initializer=GlorotNormal()
         )
     )
     clModel.add(Flatten())
-    clModel.add(Dense(64))
+    clModel.add(
+        Dense(64,
+        kernel_initializer=GlorotNormal()
+        )
+    )
     clModel.add(Dense(1, activation='sigmoid'))
     return SequentialModel(
-        clModel, {}, FEAT_CONFIG, replace(SEQ_CONFIG, num_epochs=10))
+        clModel, {}, FEAT_CONFIG, replace(SEQ_CONFIG, num_epochs=15))
 
 
 def mk_gru_feature_model():
@@ -279,12 +291,12 @@ MODELS = []
 # NOTE: When ready to test with holdouts, change list to bp.STANDARD_PREP_NAMES
 for prep_name in ['rand']:
     MODELS.extend([
-        bm.ModelCase('dummy', prep_name, mk_dummy_model),
+        # bm.ModelCase('dummy', prep_name, mk_dummy_model),
         # bm.ModelCase('lstm', prep_name, mk_lstm_model),
         # bm.ModelCase('gru', prep_name, mk_gru_model),
         # bm.ModelCase('lstm-cnn', prep_name, mk_lstm_cnn_model),
         # bm.ModelCase('gru-feature', prep_name, mk_gru_feature_model),
-        # bm.ModelCase('lstm-feature', prep_name, mk_lstm_feature_model),
+        bm.ModelCase('lstm-feature', prep_name, mk_lstm_feature_model),
     ])
 
 
