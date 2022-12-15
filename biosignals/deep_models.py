@@ -1,8 +1,8 @@
 from dataclasses import dataclass, replace
 from keras.models import Sequential, load_model
-from keras.layers import Dense, LSTM, GRU, Activation, Conv1D, Flatten, Input  # Dropout, BatchNormalization
+from keras.layers import Dense, LSTM, GRU, Activation, Conv1D, Flatten, Input, MaxPooling1D, Dropout  # Dropout, BatchNormalization
 from keras.optimizers import Adam
-from keras.initializers import GlorotNormal
+from keras.initializers import GlorotNormal, HeNormal
 from keras import regularizers
 from typing import Any, Dict, List, Optional, cast
 import biosignals.models as bm
@@ -276,6 +276,72 @@ def mk_lstm_cnn_model():
     return SequentialModel(
         clModel, {}, FEAT_CONFIG, replace(SEQ_CONFIG, num_epochs=15))
 
+def mk_cnn_lstm_model():
+    clModel = Sequential()
+    clModel.add(Input(shape=(750, 32)))     # (None, 750, 32))
+    clModel.add(
+        Conv1D(
+            filters=64,
+            kernel_size=3,
+            strides=1,
+            activation="relu",
+            kernel_initializer=HeNormal()
+        )
+    )
+    clModel.add(
+        Conv1D(
+            filters=128,
+            kernel_size=3,
+            strides=1,
+            activation="relu",
+            kernel_initializer=HeNormal()
+        )
+    )
+    clModel.add(
+        MaxPooling1D(
+            pool_size=8
+        ))
+    clModel.add(
+        Conv1D(
+            filters=128,
+            kernel_size=3,
+            strides=1,
+            activation="relu",
+            kernel_initializer=HeNormal()
+        )
+    )
+    clModel.add(
+        LSTM(
+            256,
+            return_sequences=True,
+            activation="relu",
+            dropout=0.3,
+            kernel_initializer=HeNormal(),
+            kernel_regularizer=regularizers.L2(0.001)
+        )
+    )
+    clModel.add(
+        LSTM(
+            256,
+            return_sequences=True,
+            kernel_initializer=HeNormal(),
+            activation="relu"
+        )
+    )
+    clModel.add(
+        Dense(128,
+        # kernel_initializer=GlorotNormal()
+        )
+    )
+    clModel.add(Flatten())
+    clModel.add(
+        Dense(64,
+        # kernel_initializer=GlorotNormal()
+        )
+    )
+    clModel.add(Dense(1, activation='sigmoid'))
+    return SequentialModel(
+        clModel, {}, FEAT_CONFIG, replace(SEQ_CONFIG, num_epochs=20, batch_size=128, clip_norm=1))
 
 def mk_gru_feature_model():
     return SequentialModel(GRUFeatureModel, {}, FEAT_CONFIG, SEQ_CONFIG)
@@ -289,14 +355,16 @@ MODELS = []
 
 
 # NOTE: When ready to test with holdouts, change list to bp.STANDARD_PREP_NAMES
-for prep_name in ['rand']:
+# for prep_name in ['rand']:
+for prep_name in ['jit']:
     MODELS.extend([
         # bm.ModelCase('dummy', prep_name, mk_dummy_model),
         # bm.ModelCase('lstm', prep_name, mk_lstm_model),
         # bm.ModelCase('gru', prep_name, mk_gru_model),
         # bm.ModelCase('lstm-cnn', prep_name, mk_lstm_cnn_model),
+        bm.ModelCase('cnn-lstm', prep_name, mk_cnn_lstm_model),
         # bm.ModelCase('gru-feature', prep_name, mk_gru_feature_model),
-        bm.ModelCase('lstm-feature', prep_name, mk_lstm_feature_model),
+        # bm.ModelCase('lstm-feature', prep_name, mk_lstm_feature_model),
     ])
 
 
@@ -313,7 +381,7 @@ def test_models(models: Optional[List[bm.ModelCase]] = None):
 
 
 def test_model_load():
-    for name in ['dummy']:
+    for name in ['cnn-lstm_jit']:
         model = SequentialModel.load(f'models/{name}')
-        test_res = model.execute_test('rand')
+        test_res = model.execute_test('jit')
         be.eval_performance(name, 'test', test_res, '/tmp')

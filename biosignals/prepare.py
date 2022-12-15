@@ -183,7 +183,7 @@ def ensure_rand():
 # Prepare a jittered set to pump up the training examples
 def prepare_jit():
     rand = Random(42)
-    conf = replace(DEFAULT_WINDOW_CONFIG, max_jitter=50)
+    conf = replace(DEFAULT_WINDOW_CONFIG, max_jitter=100)
     perms = bs.generate_perms(bd.PARTICIPANTS, rand)
     splitter = bs.RandomSplitter(
         perms, {bs.Role.TRAIN: 80, bs.Role.VALIDATE: 0, bs.Role.TEST: 20})
