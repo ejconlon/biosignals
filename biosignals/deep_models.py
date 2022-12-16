@@ -241,7 +241,7 @@ def mk_lstm_cnn_model():
             return_sequences=True,
             activation="relu",
             dropout=0.1,
-            kernel_initializer=GlorotNormal(),
+            kernel_initializer=HeNormal(),
             kernel_regularizer=regularizers.L2(0.001)
         )
     )
@@ -249,13 +249,13 @@ def mk_lstm_cnn_model():
         LSTM(
             256,
             return_sequences=True,
-            kernel_initializer=GlorotNormal(),
+            kernel_initializer=HeNormal(),
             activation="relu"
         )
     )
     clModel.add(
         Dense(128,
-        kernel_initializer=GlorotNormal()
+        # kernel_initializer=GlorotNormal()
         )
     )
     clModel.add(
@@ -263,34 +263,35 @@ def mk_lstm_cnn_model():
             filters=64,
             kernel_size=1,
             strides=1,
-            kernel_initializer=GlorotNormal()
+            kernel_initializer=HeNormal(),
+            activation="relu"
         )
     )
     clModel.add(Flatten())
     clModel.add(
         Dense(64,
-        kernel_initializer=GlorotNormal()
+        # kernel_initializer=GlorotNormal()
         )
     )
     clModel.add(Dense(1, activation='sigmoid'))
     return SequentialModel(
-        clModel, {}, FEAT_CONFIG, replace(SEQ_CONFIG, num_epochs=15))
+        clModel, {}, FEAT_CONFIG, replace(SEQ_CONFIG, num_epochs=10))
 
 def mk_cnn_lstm_model():
     clModel = Sequential()
     clModel.add(Input(shape=(750, 32)))     # (None, 750, 32))
+    # clModel.add(
+    #     Conv1D(
+    #         filters=64,
+    #         kernel_size=3,
+    #         strides=1,
+    #         activation="relu",
+    #         kernel_initializer=HeNormal()
+    #     )
+    # )
     clModel.add(
         Conv1D(
-            filters=64,
-            kernel_size=3,
-            strides=1,
-            activation="relu",
-            kernel_initializer=HeNormal()
-        )
-    )
-    clModel.add(
-        Conv1D(
-            filters=128,
+            filters=256,
             kernel_size=3,
             strides=1,
             activation="relu",
@@ -299,15 +300,20 @@ def mk_cnn_lstm_model():
     )
     clModel.add(
         MaxPooling1D(
-            pool_size=8
+            pool_size=12
         ))
+    # clModel.add(
+    #     Conv1D(
+    #         filters=128,
+    #         kernel_size=3,
+    #         strides=1,
+    #         activation="relu",
+    #         kernel_initializer=HeNormal()
+    #     )
+    # )
     clModel.add(
-        Conv1D(
-            filters=128,
-            kernel_size=3,
-            strides=1,
-            activation="relu",
-            kernel_initializer=HeNormal()
+        Dense(128,
+        # kernel_initializer=GlorotNormal()
         )
     )
     clModel.add(
@@ -315,7 +321,7 @@ def mk_cnn_lstm_model():
             256,
             return_sequences=True,
             activation="relu",
-            dropout=0.3,
+            dropout=0.1,
             kernel_initializer=HeNormal(),
             kernel_regularizer=regularizers.L2(0.001)
         )
@@ -341,7 +347,7 @@ def mk_cnn_lstm_model():
     )
     clModel.add(Dense(1, activation='sigmoid'))
     return SequentialModel(
-        clModel, {}, FEAT_CONFIG, replace(SEQ_CONFIG, num_epochs=20, batch_size=128, clip_norm=1))
+        clModel, {}, FEAT_CONFIG, replace(SEQ_CONFIG, num_epochs=20, batch_size=256, clip_norm=1))
 
 def mk_gru_feature_model():
     return SequentialModel(GRUFeatureModel, {}, FEAT_CONFIG, SEQ_CONFIG)
