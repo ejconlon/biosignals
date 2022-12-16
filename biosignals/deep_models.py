@@ -1,8 +1,8 @@
 from dataclasses import dataclass, replace
 from keras.models import Sequential, load_model
-from keras.layers import Dense, LSTM, GRU, Activation, Conv1D, Flatten, Input, MaxPooling1D, Dropout  # Dropout, BatchNormalization
+from keras.layers import Dense, LSTM, GRU, Activation, Conv1D, Flatten, Input, MaxPooling1D
 from keras.optimizers import Adam
-from keras.initializers import GlorotNormal, HeNormal
+from keras.initializers import HeNormal
 from keras import regularizers
 from typing import Any, Dict, List, Optional, cast
 import biosignals.models as bm
@@ -254,8 +254,9 @@ def mk_lstm_cnn_model():
         )
     )
     clModel.add(
-        Dense(128,
-        # kernel_initializer=GlorotNormal()
+        Dense(
+            128,
+            # kernel_initializer=GlorotNormal()
         )
     )
     clModel.add(
@@ -269,13 +270,15 @@ def mk_lstm_cnn_model():
     )
     clModel.add(Flatten())
     clModel.add(
-        Dense(64,
-        # kernel_initializer=GlorotNormal()
+        Dense(
+            64,
+            # kernel_initializer=GlorotNormal()
         )
     )
     clModel.add(Dense(1, activation='sigmoid'))
     return SequentialModel(
         clModel, {}, FEAT_CONFIG, replace(SEQ_CONFIG, num_epochs=10))
+
 
 def mk_cnn_lstm_model():
     clModel = Sequential()
@@ -312,8 +315,9 @@ def mk_cnn_lstm_model():
     #     )
     # )
     clModel.add(
-        Dense(128,
-        # kernel_initializer=GlorotNormal()
+        Dense(
+            128,
+            # kernel_initializer=GlorotNormal()
         )
     )
     clModel.add(
@@ -335,19 +339,22 @@ def mk_cnn_lstm_model():
         )
     )
     clModel.add(
-        Dense(128,
-        # kernel_initializer=GlorotNormal()
+        Dense(
+            128,
+            # kernel_initializer=GlorotNormal()
         )
     )
     clModel.add(Flatten())
     clModel.add(
-        Dense(64,
-        # kernel_initializer=GlorotNormal()
+        Dense(
+            64,
+            # kernel_initializer=GlorotNormal()
         )
     )
     clModel.add(Dense(1, activation='sigmoid'))
     return SequentialModel(
         clModel, {}, FEAT_CONFIG, replace(SEQ_CONFIG, num_epochs=20, batch_size=256, clip_norm=1))
+
 
 def mk_gru_feature_model():
     return SequentialModel(GRUFeatureModel, {}, FEAT_CONFIG, SEQ_CONFIG)
