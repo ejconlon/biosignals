@@ -6,6 +6,7 @@ import biosignals.split as bs
 import biosignals.features as bf
 import biosignals.prepare as bp
 import biosignals.models as bm
+import biosignals.deep_models as bdeep
 import numpy as np
 import pandas as pd
 
@@ -87,6 +88,18 @@ class SkPredictor(Predictor):
         print('Predicting labels')
         return self._model._model.predict(x)
 
+class DeepPredictor(Predictor):
+    def __init__(self, model: Any, conf: OnlineConfig):
+        self._model = model
+        self._conf = conf
+
+    def predict_online(self, windows: np.ndarray) -> np.ndarray:
+        assert len(windows.shape) == 3
+        print('Processing windows')
+        _, w = feature_windows(windows, self._conf)
+        print('Predicting labels')
+        return self._model._model.predict(np.swapaxes(w, 1, 2))
+
 
 # Predict onsets as sliding window of eeg
 def predict_onsets(
@@ -106,7 +119,7 @@ def test_online():
     part = '01'
     md = marked[part]
     # HACK - testing on a smaller recording
-    md = replace(md, eeg=md.eeg[:, 0:10000])
+    md = replace(md, eeg=md.eeg[:, 0:120000])
     step_ms = 50
     extractors = bp.default_extractors()
     win_conf = bp.DEFAULT_WINDOW_CONFIG
@@ -119,14 +132,22 @@ def test_online():
         strategy=bm.Strategy.MULTI,
         core_features=bm.FEATURES,
         extractors=extractors,
-        use_eeg=False,
+        use_eeg=True,
     )
-    for name in ['rf_multi']:
+    y_preds = []
+    for name in ['cnn-lstm_jit']:
         print('Loading sk model')
         model_dir = f'models/{name}'
-        model = bm.Model.load(model_dir)
-        predictor = SkPredictor(model, online_conf)
+        model = bdeep.SequentialModel.load(model_dir)
+        predictor = DeepPredictor(model, online_conf)
+
+        # model = bm.Model.load(model_dir)
+        # predictor = SkPredictor(model, online_conf)
+
         y_pred = predict_onsets(predictor, win_conf, offsets, md.eeg)
+        y_preds.append(y_pred)
+        # print(y_pred)
         online_res = be.Results(y_true=y_true, y_pred=y_pred)
         be.eval_performance(name, 'online', online_res, model_dir)
         be.plot_results(name, 'online', online_res, model_dir)
+    return y_preds
